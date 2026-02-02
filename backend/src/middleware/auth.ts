@@ -70,6 +70,14 @@ export const requireDriver = (req: Request, res: Response, next: NextFunction): 
   next();
 };
 
+export const requireAdmin = (req: Request, res: Response, next: NextFunction): void => {
+  if (req.authType !== 'user' || req.user?.role !== 'admin') {
+    res.status(403).json({ error: 'Admin access required' });
+    return;
+  }
+  next();
+};
+
 export const generateAccessToken = (payload: JwtPayload): string => {
   return jwt.sign(payload, authConfig.jwtSecret, { expiresIn: '1h' } as jwt.SignOptions);
 };
