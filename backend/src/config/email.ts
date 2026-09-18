@@ -24,7 +24,7 @@ const getTransporter = (): Transporter | null => {
   return transporter;
 };
 
-export const fromAddress = EMAIL_FROM || 'StarTech Solutions <info@startechsolutions.us>';
+export const fromAddress = EMAIL_FROM || 'StarTech Solutions <admin@startechsolutions.us>';
 
 interface SendArgs {
   to: string;
