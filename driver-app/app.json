@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "STS Driver app",
+    "name": "STS Driver App",
     "slug": "driverapp",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -33,11 +33,11 @@
     "plugins": [
       [
         "expo-camera",
-        { "cameraPermission": "Allow STS Driver app to access your camera." }
+        { "cameraPermission": "Allow STS Driver App to access your camera." }
       ],
       [
         "expo-location",
-        { "locationWhenInUsePermission": "Allow STS Driver app to access your location." }
+        { "locationWhenInUsePermission": "Allow STS Driver App to access your location." }
       ]
     ],
     "extra": {
