@@ -17,7 +17,8 @@
       "bundleIdentifier": "com.aytalnet.fleetdriver",
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to take photos of odometer and selfie.",
-        "NSLocationWhenInUseUsageDescription": "This app uses your location to track trips."
+        "NSLocationWhenInUseUsageDescription": "This app uses your location to track trips.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
