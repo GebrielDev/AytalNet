@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacy Policy — STS Driver App</title>
+<meta name="description" content="Privacy policy for the STS Driver App: what it collects, why, and how it is stored." />
+<link rel="icon" href="/logo.svg" type="image/svg+xml" />
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --border: #334155;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #60a5fa;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.7;
+    padding: 48px 16px;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  header img { width: 40px; height: 40px; object-fit: contain; }
+  h1 { font-size: 1.75rem; margin: 0; letter-spacing: -0.02em; }
+  .updated { color: var(--muted); font-size: 0.875rem; margin: 0 0 32px; }
+  h2 {
+    font-size: 1.125rem;
+    margin: 36px 0 10px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  h2:first-of-type { border-top: none; padding-top: 0; }
+  p, li { color: #cbd5e1; }
+  ul { padding-left: 20px; }
+  li { margin-bottom: 6px; }
+  a { color: var(--accent); }
+  code {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 0.875em;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.925rem; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  footer { max-width: 720px; margin: 48px auto 0; padding-top: 24px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="/logo.svg" alt="STS" />
+    <h1>Privacy Policy</h1>
+  </header>
+  <p class="updated">STS Driver App · Last updated: 18 September 2026</p>
+
+
+  <h2>Who this covers</h2>
+  <p>
+    This policy describes how StarTech Solutions LLC ("we") handles information collected through
+    the STS Driver App, an Android application used by our fleet drivers to record trips.
+    The app is issued to employees and contract drivers; it is not available for public sign-up.
+  </p>
+
+  <h2>What the app collects</h2>
+  <table>
+    <tr><th>Data</th><th>When</th><th>Why</th></tr>
+    <tr>
+      <td>Name, email address, phone number, employee ID, driver licence number</td>
+      <td>Created for you by a dispatcher; not entered in the app</td>
+      <td>To identify you and let you sign in</td>
+    </tr>
+    <tr>
+      <td>GPS coordinates and the derived street address</td>
+      <td>Once when you start a trip, once when you end it</td>
+      <td>To record where each trip began and ended</td>
+    </tr>
+    <tr>
+      <td>Photographs: a driver selfie, odometer readings, the vehicle licence plate, and optionally a passenger</td>
+      <td>Captured by you during a trip</td>
+      <td>To verify who drove, the mileage recorded, and the vehicle used</td>
+    </tr>
+    <tr>
+      <td>Trip records: start and end time, duration, odometer readings, mileage, assigned vehicle</td>
+      <td>During a trip</td>
+      <td>Fleet reporting and mileage accounting</td>
+    </tr>
+  </table>
+
+  <h2>Location: what we do and do not do</h2>
+  <p>
+    The app reads your location <strong>only at the two moments you start and end a trip</strong>.
+    It does not track you continuously, does not run in the background, and does not hold the
+    Android background-location permission. If you deny the location permission, a trip cannot
+    be recorded.
+  </p>
+
+  <h2>Photographs of passengers</h2>
+  <p>
+    A trip may include a photograph of a passenger. Passengers are not users of this app and do
+    not have accounts. Do not take a passenger photograph without their knowledge, and do not
+    take one at all where company policy or local law does not permit it.
+  </p>
+
+  <h2>Where the information goes</h2>
+  <ul>
+    <li>Trip and account records are stored in a PostgreSQL database hosted by <strong>Railway</strong>.</li>
+    <li>Photographs are uploaded to and stored by <strong>Cloudinary</strong>.</li>
+    <li>Dispatchers and administrators at StarTech Solutions LLC can view all of the above through our web dashboard.</li>
+  </ul>
+  <p>
+    We do not sell this information, and we do not use it for advertising. The app contains no
+    third-party advertising or analytics SDKs.
+  </p>
+
+  <h2>Security</h2>
+  <p>
+    Passwords are stored only as salted hashes, never in readable form. Traffic between the app
+    and our servers uses HTTPS. No system is perfectly secure, and we cannot guarantee against
+    every possible compromise.
+  </p>
+
+  <h2>How long it is kept</h2>
+  <p>
+    Trip records and their photographs are retained for seven years, which covers the period we
+    are required to keep vehicle and mileage records for tax and insurance purposes. After that,
+    photographs are deleted and trip records are anonymised: the mileage, dates and vehicle are
+    kept for fleet reporting, but they are no longer linked to you. Account records are kept for
+    as long as you drive for us and for seven years afterwards.
+  </p>
+
+  <h2>Your choices</h2>
+  <p>
+    To see what we hold about you, correct it, or ask for it to be deleted, contact us at the
+    address below. Some records we are required to keep for tax, insurance or regulatory reasons
+    and cannot delete on request. Depending on where you live you may have additional rights
+    under state privacy laws such as those in California, Virginia and Colorado.
+  </p>
+
+  <h2>Children</h2>
+  <p>
+    The app is for employed and contracted drivers only and is not directed to anyone under 18.
+  </p>
+
+  <h2>Changes</h2>
+  <p>
+    If this policy changes materially we will update this page and change the date at the top.
+    We do not send separate notifications, so please check this page from time to time.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    StarTech Solutions LLC<br />
+    4040 E. McDowell St., Suite 405<br />
+    Phoenix, AZ 85008<br />
+    <a href="tel:+14805725727">(480) 572-5727</a><br />
+    <a href="mailto:admin@startechsolutions.us">admin@startechsolutions.us</a>
+  </p>
+</main>
+
+<footer>
+  <a href="/">← STS Driver App</a>
+</footer>
+</body>
+</html>

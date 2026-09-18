@@ -38,3 +38,8 @@ uploads/*
 # Cache
 .vite/
 .cache/
+
+# Google Play service account key (EAS Submit) - never commit
+google-service-account*.json
+play-store-*.json
+pc-api-*.json

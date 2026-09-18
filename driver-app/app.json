@@ -1,45 +1,61 @@
 {
   "expo": {
-    "name": "STS Fleet Driver",
+    "name": "STS Driver App",
     "slug": "driverapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0f172a"
-    },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.aytalnet.fleetdriver",
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to take photos of odometer and selfie.",
-        "NSLocationWhenInUseUsageDescription": "This app uses your location to track trips."
+        "NSLocationWhenInUseUsageDescription": "This app uses your location to track trips.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.aytalnet.fleetdriver",
+      "package": "us.startechsolutions.driverapp",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0f172a"
       },
-      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
     },
     "plugins": [
       [
-        "expo-camera",
-        { "cameraPermission": "Allow Fleet Driver to access your camera." }
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow STS Driver App to access your camera.",
+          "microphonePermission": false
+        }
       ],
       [
         "expo-location",
-        { "locationWhenInUsePermission": "Allow Fleet Driver to access your location." }
+        {
+          "locationWhenInUsePermission": "Allow STS Driver App to access your location."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0f172a"
+        }
       ]
     ],
     "extra": {
-      "apiUrl": "https://aytalnet-production.up.railway.app/api",
+      "apiUrl": "https://api.startechsolutions.us/api",
       "eas": {
         "projectId": "d2207950-fd79-41c3-ba89-efb8931e2a0a"
       }

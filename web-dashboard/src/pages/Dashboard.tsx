@@ -2,6 +2,14 @@ import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { tripsApi, reportsApi } from '../services/api';
 
+// VITE_API_URL ends in /api. Socket.io reads a trailing path as a namespace,
+// so connecting to it lands on /api, which the server has no handler for.
+// Connect to the origin instead, where io.on('connection') is registered.
+const SOCKET_URL = new URL(
+  import.meta.env.VITE_API_URL || '/',
+  window.location.origin
+).origin;
+
 interface Stats {
   totalDrivers: number;
   activeDrivers: number;
@@ -45,7 +53,7 @@ export default function Dashboard() {
     fetchData();
 
     // Socket.io connection for real-time updates
-    const socket = io(import.meta.env.VITE_API_URL || window.location.origin);
+    const socket = io(SOCKET_URL);
 
     socket.on('connect', () => {
       socket.emit('join:dashboard');

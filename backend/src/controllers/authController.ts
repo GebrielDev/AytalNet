@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { User, Driver, PasswordResetToken } from '../models';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../middleware/auth';
+import { sendPasswordResetEmail, isEmailConfigured } from '../config/email';
 
 export const loginUser = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -105,15 +106,26 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const resetLink = `${frontendUrl}/reset-password?token=${token}`;
 
-    // TODO: Send resetLink via email in production
-    console.log(`Password reset requested for ${email} (${accountType}): ${resetLink}`);
+    const sent = await sendPasswordResetEmail(email, resetLink);
 
-    res.json({
-      ...successMsg,
-      // Include resetToken in response for development/testing; remove in production
-      resetToken: token,
-      resetLink,
-    });
+    if (!sent) {
+      // The address exists but we could not reach it. Say nothing different to
+      // the caller - that would leak which addresses are registered - but make
+      // it loud in the logs, and in development print the link so the flow is
+      // still testable without an SMTP server.
+      console.error(
+        `[auth] Could not email a reset link to ${email} (${accountType}).`,
+        isEmailConfigured ? 'SMTP send failed.' : 'SMTP is not configured.'
+      );
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[auth] Development reset link for ${email}: ${resetLink}`);
+      }
+    }
+
+    // The token is deliberately NOT returned. It is a bearer credential for the
+    // account, and this endpoint is unauthenticated, so returning it would let
+    // anyone reset any account by knowing only its email address.
+    res.json(successMsg);
   } catch (error) {
     console.error('Forgot password error:', error);
     res.status(500).json({ error: 'Failed to process request' });

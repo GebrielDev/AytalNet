@@ -9,7 +9,14 @@ interface UserRecord {
   createdAt: string;
 }
 
-const emptyForm = { email: '', name: '', password: '', role: 'dispatcher' as const };
+interface UserForm {
+  email: string;
+  name: string;
+  password: string;
+  role: UserRecord['role'];
+}
+
+const emptyForm: UserForm = { email: '', name: '', password: '', role: 'dispatcher' };
 
 export default function Users() {
   const [users, setUsers] = useState<UserRecord[]>([]);

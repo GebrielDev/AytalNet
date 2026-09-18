@@ -39,7 +39,7 @@ export default function StartTripScreen() {
 
   const takePhoto = async (type: 'license_plate' | 'selfie' | 'odometer' | 'passenger') => {
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 0.7,
       allowsEditing: false,
     });

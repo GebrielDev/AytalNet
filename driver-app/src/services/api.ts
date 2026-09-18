@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Production API URL - override via EXPO_PUBLIC_API_URL env var at build time
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://aytalnet-production.up.railway.app/api';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://api.startechsolutions.us/api';
 
 const api = axios.create({
   baseURL: API_URL,

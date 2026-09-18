@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 5.0.0",
-    "appVersionSource": "local"
+    "appVersionSource": "remote"
   },
   "build": {
     "dev": {
@@ -11,7 +11,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://aytalnet-production.up.railway.app/api"
+        "EXPO_PUBLIC_API_URL": "https://api.startechsolutions.us/api"
       }
     },
     "development": {
@@ -24,16 +24,22 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://aytalnet-production.up.railway.app/api"
+        "EXPO_PUBLIC_API_URL": "https://api.startechsolutions.us/api"
       }
     },
     "production": {
+      "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://aytalnet-production.up.railway.app/api"
+        "EXPO_PUBLIC_API_URL": "https://api.startechsolutions.us/api"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
+      }
+    }
   }
 }
