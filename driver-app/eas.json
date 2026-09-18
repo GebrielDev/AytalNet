@@ -11,7 +11,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://aytalnet-production.up.railway.app/api"
+        "EXPO_PUBLIC_API_URL": "https://api.startechsolutions.us/api"
       }
     },
     "development": {
@@ -24,13 +24,13 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://aytalnet-production.up.railway.app/api"
+        "EXPO_PUBLIC_API_URL": "https://api.startechsolutions.us/api"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://aytalnet-production.up.railway.app/api"
+        "EXPO_PUBLIC_API_URL": "https://api.startechsolutions.us/api"
       }
     }
   },
