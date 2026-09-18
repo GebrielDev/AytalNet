@@ -8,7 +8,6 @@ export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
-  const [resetToken, setResetToken] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     if (!email) {
@@ -18,12 +17,8 @@ export default function ForgotPasswordScreen() {
 
     setLoading(true);
     try {
-      const res = await authApi.forgotPassword(email);
+      await authApi.forgotPassword(email);
       setSent(true);
-      // In development, the API returns the token directly
-      if (res.data.resetToken) {
-        setResetToken(res.data.resetToken);
-      }
     } catch (error: any) {
       Alert.alert('Error', error.response?.data?.error || 'Failed to send reset link');
     } finally {
@@ -44,18 +39,11 @@ export default function ForgotPasswordScreen() {
           <>
             <View style={styles.successBox}>
               <Text style={styles.successText}>
-                If an account with that email exists, a reset link has been generated. Check your email or proceed below.
+                If an account with that email exists, we have emailed a link to reset your
+                password. The link expires in one hour.
               </Text>
             </View>
-            {resetToken && (
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => navigation.navigate('ResetPassword', { token: resetToken })}
-              >
-                <Text style={styles.buttonText}>Reset Password Now</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.linkButton} onPress={() => { setSent(false); setResetToken(null); }}>
+            <TouchableOpacity style={styles.linkButton} onPress={() => setSent(false)}>
               <Text style={styles.linkText}>Try another email</Text>
             </TouchableOpacity>
           </>
