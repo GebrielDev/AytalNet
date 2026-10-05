@@ -30,7 +30,7 @@ export default function LoginScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
-        <Text style={styles.title}>Fleet Driver</Text>
+        <Text style={styles.title}>STS Driver App</Text>
         <Text style={styles.subtitle}>Sign in to start your shift</Text>
       </View>
 
