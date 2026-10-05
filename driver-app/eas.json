@@ -41,6 +41,7 @@
         "releaseStatus": "draft"
       },
       "ios": {
+        "appleTeamId": "6P65AJVGUX",
         "language": "en-US",
         "companyName": "StarTech Solutions LLC",
         "sku": "us-startechsolutions-driverapp"
