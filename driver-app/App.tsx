@@ -29,7 +29,7 @@ function AppNavigator() {
         </>
       ) : (
         <>
-          <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Fleet Driver' }} />
+          <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'STS Driver App' }} />
           <Stack.Screen name="StartTrip" component={StartTripScreen} options={{ title: 'Start Trip' }} />
           <Stack.Screen name="ActiveTrip" component={ActiveTripScreen} options={{ title: 'Active Trip', headerBackVisible: false }} />
           <Stack.Screen name="EndTrip" component={EndTripScreen} options={{ title: 'End Trip' }} />
