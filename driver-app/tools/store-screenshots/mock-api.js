@@ -20,12 +20,20 @@ const trip = (id, d, sh, sm, eh, em, so, eo) => ({
   totalMileage: eo - so,
 });
 
+// Enough history to fill a tall phone screen. A working driver accumulates
+// trips quickly, so a short list is the unrealistic case, and it leaves the
+// Home screen half empty on the 6.9" iPhone size Apple asks for.
 const trips = [
   trip(21, 21, 7, 45, 11, 20, 47890, 47948),
   trip(20, 18, 8, 10, 10, 5, 47802, 47890),
   trip(19, 17, 13, 30, 16, 52, 47735, 47802),
   trip(18, 16, 7, 55, 12, 40, 47661, 47735),
   trip(17, 15, 9, 5, 11, 48, 47604, 47661),
+  trip(16, 14, 8, 20, 11, 35, 47538, 47604),
+  trip(15, 11, 7, 40, 13, 15, 47455, 47538),
+  trip(14, 10, 12, 5, 15, 30, 47399, 47455),
+  trip(13, 9, 8, 0, 10, 42, 47342, 47399),
+  trip(12, 8, 7, 50, 12, 10, 47268, 47342),
 ];
 
 const active = {

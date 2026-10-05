@@ -43,3 +43,11 @@ uploads/*
 google-service-account*.json
 play-store-*.json
 pc-api-*.json
+
+# Apple signing keys and certificates - never commit.
+# eas.json's ascApiKeyPath points at a .p8 on disk, which makes it easy to
+# drop one in the repo by accident.
+*.p8
+*.p12
+*.mobileprovision
+*.cer
