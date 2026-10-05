@@ -1,8 +1,8 @@
-// Captures Play-ready phone screenshots of the real driver-app screens.
+// Captures store-ready phone screenshots of the real driver-app screens.
 //
 // There is no device or emulator in CI, so the app is rendered through
-// react-native-web and photographed with Playwright at 1080x1920 (Play wants
-// 9:16, each side 320-3840px).
+// react-native-web and photographed with Playwright. SHOT_DEVICE picks the
+// size and output directory - see DEVICES below.
 //
 // The screens are the app's own, unmodified - only the backend is swapped for
 // mock-api.js, so no production data ends up in a public store listing.
@@ -18,10 +18,22 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
-const OUT = process.env.SHOT_DIR ||
-  path.join(__dirname, '../../../store-assets/play/screenshots');
+// Device presets. Play wants 9:16 with each side 320-3840px; Apple wants its
+// 6.9" iPhone size, which is what App Store Connect asks for first.
+const DEVICES = {
+  android: { w: 1080, h: 1920, scale: 3, dir: 'store-assets/play/screenshots' },
+  iphone: { w: 1320, h: 2868, scale: 3, dir: 'store-assets/appstore/screenshots' },
+};
+
+const DEVICE = (process.env.SHOT_DEVICE || 'android').toLowerCase();
+const preset = DEVICES[DEVICE];
+if (!preset) {
+  throw new Error(`Unknown SHOT_DEVICE "${DEVICE}". Known: ${Object.keys(DEVICES).join(', ')}`);
+}
+
+const OUT = process.env.SHOT_DIR || path.join(__dirname, '../../..', preset.dir);
 const APP = process.env.APP_URL || 'http://localhost:8081/';
-const W = 1080, H = 1920, SCALE = 3;
+const W = preset.w, H = preset.h, SCALE = preset.scale;
 const PASS = (process.argv[2] || 'A').toUpperCase();
 
 const main = async () => {
@@ -42,7 +54,7 @@ const main = async () => {
   const shot = async (name) => {
     await page.waitForTimeout(1500);
     await page.screenshot({ path: path.join(OUT, name + '.png') });
-    console.log('captured', name);
+    console.log(`captured ${name} (${DEVICE} ${W}x${H})`);
   };
 
   await page.goto(APP, { waitUntil: 'networkidle', timeout: 120000 });
