@@ -45,8 +45,9 @@ play-store-*.json
 pc-api-*.json
 
 # Apple signing keys and certificates - never commit.
-# eas.json's ascApiKeyPath points at a .p8 on disk, which makes it easy to
-# drop one in the repo by accident.
+# eas.json supports pointing ascApiKeyPath at a .p8 on disk. This project
+# keeps its App Store Connect key on EAS instead, but a downloaded key still
+# lands in Downloads or the project folder, so guard the patterns.
 *.p8
 *.p12
 *.mobileprovision

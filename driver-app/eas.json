@@ -39,6 +39,11 @@
       "android": {
         "track": "internal",
         "releaseStatus": "draft"
+      },
+      "ios": {
+        "language": "en-US",
+        "companyName": "StarTech Solutions LLC",
+        "sku": "us-startechsolutions-driverapp"
       }
     }
   }
