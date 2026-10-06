@@ -50,6 +50,30 @@ export const connectDatabase = async (): Promise<void> => {
       console.log('Migration note:', (migrationError as Error).message);
     }
 
+    // The retention job anonymises trips past their seven-year window by
+    // nulling the driver link and the coordinates (scripts/retentionPolicy.ts).
+    // sequelize.sync() does not relax an existing NOT NULL, so the constraint
+    // is dropped here, idempotently, in the same style as the migrations above.
+    for (const column of ['driver_id', 'start_latitude', 'start_longitude']) {
+      try {
+        await sequelize.query(`ALTER TABLE trips ALTER COLUMN ${column} DROP NOT NULL;`);
+      } catch (migrationError) {
+        console.log(`Migration note (trips.${column}):`, (migrationError as Error).message);
+      }
+    }
+    console.log('Migration: trips anonymisable columns ensured nullable');
+
+    // Counts the seven years the privacy policy gives account records after a
+    // driver stops driving. Existing inactive drivers get NULL: there is no
+    // honest way to infer when they left, and the retention job reports them
+    // rather than guessing a date that would delete real data early or late.
+    try {
+      await sequelize.query('ALTER TABLE drivers ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMP WITH TIME ZONE;');
+      console.log('Migration: drivers.deactivated_at column ensured');
+    } catch (migrationError) {
+      console.log('Migration note (drivers.deactivated_at):', (migrationError as Error).message);
+    }
+
     await sequelize.sync();
     console.log('Database models synchronized');
   } catch (error) {

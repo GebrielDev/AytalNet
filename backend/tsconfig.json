@@ -14,5 +14,8 @@
     "sourceMap": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  // This config builds what ships. Tests are typechecked separately by
+  // `npm run typecheck` (tsconfig.typecheck.json), but must not be compiled
+  // into dist and deployed.
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "vitest.config.ts"]
 }

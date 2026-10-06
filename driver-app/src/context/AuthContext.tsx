@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authApi } from '../services/api';
+import { authApi, setOnSessionEnded } from '../services/api';
 
 interface Driver {
   id: number;
@@ -27,6 +27,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     checkAuth();
   }, []);
 
+  // The interceptor ends a session from outside React when the server rejects
+  // the refresh token or the account is gone. Without this the navigator would
+  // keep showing the authenticated stack, because it reads this value and
+  // nothing else, and every screen on it would fail silently until a restart.
+  useEffect(() => {
+    setOnSessionEnded(() => setDriver(null));
+    return () => setOnSessionEnded(null);
+  }, []);
+
   const checkAuth = async () => {
     try {
       const token = await AsyncStorage.getItem('accessToken');
@@ -35,8 +44,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setDriver(res.data.driver);
       }
     } catch {
-      await AsyncStorage.removeItem('accessToken');
-      await AsyncStorage.removeItem('refreshToken');
+      // Deliberately does not clear anything. The response interceptor in
+      // services/api.ts owns session termination: the refresher clears the
+      // credentials when the server rejects the refresh token, and the
+      // interceptor clears them when a retried request still 401s because the
+      // account is gone. Clearing here as well was double policy with less
+      // information - the error that arrives is the original 401, so an app
+      // opened out of signal looked identical to a closed account, and the
+      // driver lost a refresh token still good for days.
+      //
+      // The driver stays null, so the login screen shows; if the credentials
+      // are still valid, the next launch picks the session back up.
     } finally {
       setLoading(false);
     }

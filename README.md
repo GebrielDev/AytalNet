@@ -30,13 +30,31 @@ npm run dev
 
 ```bash
 cd backend
-npm run db:seed
+npm run seed:dev     # from TypeScript source
+npm run seed         # from a build, after npm run build
 ```
 
-Default credentials:
-- **Admin**: admin@fleet.com / admin123
-- **Dispatcher**: dispatcher@fleet.com / dispatch123
-- **Driver**: driver@fleet.com / driver123
+**There are no default passwords.** They used to be literals in `seed.ts`, which
+meant an administrator account whose password was in source control everywhere
+the seed had run. Each run now generates one per account and prints it once:
+
+```
+Accounts created by THIS run, with the passwords they were given:
+  admin@fleet.com / vMrGyDhqUQWRrhYBfXSf (generated - this is the only time it is shown)
+  ...
+```
+
+They are stored only as hashes, so save them as they appear. To choose them
+yourself, set `SEED_ADMIN_PASSWORD`, `SEED_DISPATCHER_PASSWORD` and
+`SEED_DRIVER_PASSWORD` before running.
+
+The seed is idempotent: an account that already exists keeps the password it
+was created with, and the run says so rather than printing one that would not
+work. A forgotten password is reset through the forgot-password flow.
+
+It refuses to run when `NODE_ENV=production` unless `ALLOW_PRODUCTION_SEED=yes`
+is also set - it writes demo drivers, vehicles and trips, which is not data a
+live fleet should acquire by accident.
 
 ### Web Dashboard
 
@@ -80,7 +98,44 @@ npx expo start
 3. Add environment variable:
    - `VITE_API_URL` (your deployed backend URL + /api)
 
-### 3. Driver App
+### 3. Data retention (required for the published privacy policy)
+
+The privacy policy at `landing/public/privacy.html` tells drivers that after
+seven years their photographs are deleted and their trip records anonymised.
+That is a commitment to them, and it is only kept if something runs:
+
+```bash
+npm run retention              # report what is due, change nothing
+npm run retention -- --commit  # delete and anonymise
+```
+
+It reports by default. Both steps are irreversible - a deleted Cloudinary
+image is gone, and an anonymised trip cannot be re-linked to its driver - so
+nothing happens without `--commit`, and **no schedule is configured for you.**
+
+To enforce the policy, add a Railway cron service:
+
+1. Add a service to the project, same repo, root directory `backend`
+2. Set its start command to `npm run retention -- --commit`
+3. Set the cron schedule to `0 3 1 * *` (03:00 UTC on the first of the month -
+   the window is seven years, so daily buys nothing)
+4. Give it the same `DATABASE_URL` and `CLOUDINARY_*` variables as the backend
+
+It covers both halves of the policy: trips and their photographs at seven
+years, and driver account records seven years after the driver stops driving.
+The clock for an account starts when its status moves to inactive, which is
+recorded from now on. **Drivers already inactive have no such date**, so their
+seven years cannot be counted and the job reports them without touching them -
+set `drivers.deactivated_at` for those rows to bring them under the policy.
+
+Run it without `--commit` once first and read what it reports. The job exits
+non-zero if any Cloudinary asset could not be deleted, keeping those records so
+the next run retries them.
+
+Until that service exists, the seven-year promise is documented but not
+enforced.
+
+### 4. Driver App
 
 For the mobile app:
 1. Update `src/services/api.ts` with your production API URL
