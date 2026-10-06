@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authApi } from '../services/api';
+import { authApi, invalidateSession } from '../services/api';
 
 interface User {
   id: number;
@@ -54,6 +54,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    // Synchronously first: a refresh in flight checks this before writing, so
+    // it cannot restore the session after this point.
+    invalidateSession();
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     setUser(null);

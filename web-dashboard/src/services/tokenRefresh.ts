@@ -56,6 +56,19 @@ export interface RefresherOptions {
    * ends a session.
    */
   isTerminal: (error: unknown) => boolean;
+  /**
+   * A counter that logout increments SYNCHRONOUSLY, before it awaits anything.
+   *
+   * Comparing stored tokens is not enough on its own. Where reading storage is
+   * async - AsyncStorage in the driver app - the read can resolve with the old
+   * token, logout can run while the refresher is between that resolution and
+   * its write, and the comparison then passes against a value that is already
+   * gone. The write restores both credentials after the user signed out.
+   *
+   * A number read synchronously either side of the exchange cannot be
+   * interleaved with in that way.
+   */
+  sessionGeneration: () => number;
 }
 
 export interface Refresher {
@@ -67,6 +80,9 @@ export const createTokenRefresher = (options: RefresherOptions): Refresher => {
 
   const refresh = (): Promise<RefreshResult> => {
     if (inFlight) return inFlight;
+
+    // Read before anything is awaited, so logout cannot slip in first.
+    const generation = options.sessionGeneration();
 
     inFlight = (async (): Promise<RefreshResult> => {
       const refreshToken = options.getRefreshToken();
@@ -83,7 +99,14 @@ export const createTokenRefresher = (options: RefresherOptions): Refresher => {
         // old session back and a reload would sign the user in again; if a
         // different account signed in, writing it would overwrite their
         // credentials while the UI showed them as the current user.
-        if (options.getRefreshToken() !== refreshToken) {
+        // Order matters, and it is the whole point. The stored token is read
+        // FIRST and the generation checked LAST, so that nothing can run
+        // between the generation check and the write. With the generation on
+        // the left of a `||`, it is evaluated before the token read - and
+        // where that read is awaited (the driver app), logout lands inside the
+        // await, after the check has already passed.
+        const stored = options.getRefreshToken();
+        if (stored !== refreshToken || options.sessionGeneration() !== generation) {
           return { status: 'superseded' };
         }
 
@@ -96,6 +119,18 @@ export const createTokenRefresher = (options: RefresherOptions): Refresher => {
           // very likely still valid.
           return { status: 'unavailable' };
         }
+
+        // The same check as the success path, and for the same reason. A
+        // rejection says the token THIS call exchanged is dead - it says
+        // nothing about whoever is signed in now. Clearing unconditionally
+        // would sign out an account that logged in while this was in flight,
+        // on the strength of the previous session's 401.
+        // Same ordering as the save path above, for the same reason.
+        const stored = options.getRefreshToken();
+        if (stored !== refreshToken || options.sessionGeneration() !== generation) {
+          return { status: 'superseded' };
+        }
+
         options.clearTokens();
         return { status: 'expired' };
       }

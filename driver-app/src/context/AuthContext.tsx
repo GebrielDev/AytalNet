@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authApi, setOnSessionEnded } from '../services/api';
+import { authApi, setOnSessionEnded, invalidateSession } from '../services/api';
 
 interface Driver {
   id: number;
@@ -68,8 +68,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await AsyncStorage.removeItem('accessToken');
-    await AsyncStorage.removeItem('refreshToken');
+    // Synchronously first, before anything is awaited. A refresh already past
+    // its own getRefreshToken() would otherwise compare against a token that is
+    // still stored at that instant, pass, and write BOTH credentials back after
+    // the driver signed out. Combining the two removals closed the window
+    // between them; only a synchronous marker closes this one.
+    invalidateSession();
+    await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
     setDriver(null);
   };
 

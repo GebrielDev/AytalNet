@@ -24,6 +24,7 @@ const setup = (overrides: Partial<Parameters<typeof createTokenRefresher>[0]> = 
       const status = (error as { response?: { status?: number } })?.response?.status;
       return status === 400 || status === 401 || status === 403;
     },
+    sessionGeneration: () => 0,
     ...overrides,
   });
   return { refresher, saveTokens, clearTokens, requestNewTokens };
@@ -139,6 +140,7 @@ describe('a session that ends while a refresh is in flight', () => {
       saveTokens,
       clearTokens,
       isTerminal: () => true,
+      sessionGeneration: () => 0,
     });
 
     const pending = refresher.refresh();
@@ -163,6 +165,7 @@ describe('a session that ends while a refresh is in flight', () => {
       saveTokens,
       clearTokens: vi.fn(),
       isTerminal: () => true,
+      sessionGeneration: () => 0,
     });
 
     const pending = refresher.refresh();
@@ -180,5 +183,161 @@ describe('a session that ends while a refresh is in flight', () => {
       status: 'refreshed', accessToken: 'access-1',
     });
     expect(saveTokens).toHaveBeenCalledWith(pair(1));
+  });
+});
+
+describe('a terminal rejection that arrives after the session changed', () => {
+  // The equality guard originally covered only the success path. A rejection
+  // says the token THIS call exchanged is dead; it says nothing about whoever
+  // is signed in now. Clearing on it signed out the new account.
+  it('does not clear credentials belonging to an account that signed in meanwhile', async () => {
+    let stored: string | null = 'old-account-refresh';
+    let rejectRequest: (e: unknown) => void = () => {};
+    const clearTokens = vi.fn();
+
+    const refresher = createTokenRefresher({
+      getRefreshToken: () => stored,
+      requestNewTokens: () => new Promise<TokenPair>((_, reject) => { rejectRequest = reject; }),
+      saveTokens: vi.fn(),
+      clearTokens,
+      isTerminal: () => true,
+      sessionGeneration: () => 0,
+    });
+
+    const pending = refresher.refresh();
+    stored = 'new-account-refresh';          // another account signs in
+    rejectRequest({ response: { status: 401 } });
+
+    await expect(pending).resolves.toEqual({ status: 'superseded' });
+    expect(clearTokens).not.toHaveBeenCalled();
+    expect(stored).toBe('new-account-refresh');
+  });
+
+  it('still clears when the rejected token is the one still stored', async () => {
+    const requestNewTokens = vi.fn().mockRejectedValue({ response: { status: 401 } });
+    const { refresher, clearTokens } = setup({ requestNewTokens });
+
+    await expect(refresher.refresh()).resolves.toEqual({ status: 'expired' });
+    expect(clearTokens).toHaveBeenCalled();
+  });
+});
+
+describe('logout that lands before the stored token can be re-read', () => {
+  // The comparison alone is not enough where reading storage is async. The
+  // read can resolve with the old token, logout can run while the refresher is
+  // between that resolution and its write, and the comparison then passes
+  // against a value that is already gone - putting BOTH credentials back after
+  // the user signed out. A counter read synchronously either side cannot be
+  // interleaved with in that way.
+  it('does not save when the session generation moved, even if the token still matches', async () => {
+    let generation = 0;
+    let resolveRequest: (p: TokenPair) => void = () => {};
+    const saveTokens = vi.fn();
+
+    const refresher = createTokenRefresher({
+      // Deliberately unchanged: this is the case the token comparison misses.
+      getRefreshToken: () => 'stored-refresh',
+      requestNewTokens: () => new Promise<TokenPair>((r) => { resolveRequest = r; }),
+      saveTokens,
+      clearTokens: vi.fn(),
+      isTerminal: () => true,
+      sessionGeneration: () => generation,
+    });
+
+    const pending = refresher.refresh();
+    generation += 1;                         // logout, synchronously
+    resolveRequest(pair(1));
+
+    await expect(pending).resolves.toEqual({ status: 'superseded' });
+    expect(saveTokens).not.toHaveBeenCalled();
+  });
+
+  it('does not clear either, when a terminal rejection arrives after logout', async () => {
+    let generation = 0;
+    let rejectRequest: (e: unknown) => void = () => {};
+    const clearTokens = vi.fn();
+
+    const refresher = createTokenRefresher({
+      getRefreshToken: () => 'stored-refresh',
+      requestNewTokens: () => new Promise<TokenPair>((_, reject) => { rejectRequest = reject; }),
+      saveTokens: vi.fn(),
+      clearTokens,
+      isTerminal: () => true,
+      sessionGeneration: () => generation,
+    });
+
+    const pending = refresher.refresh();
+    generation += 1;
+    rejectRequest({ response: { status: 401 } });
+
+    await expect(pending).resolves.toEqual({ status: 'superseded' });
+    expect(clearTokens).not.toHaveBeenCalled();
+  });
+
+  it('saves normally while the generation is unchanged', async () => {
+    const { refresher, saveTokens } = setup();
+    await expect(refresher.refresh()).resolves.toEqual({
+      status: 'refreshed', accessToken: 'access-1',
+    });
+    expect(saveTokens).toHaveBeenCalled();
+  });
+});
+
+describe('logout landing during the stored-token read', () => {
+  // The generation check has to come AFTER the token is read, not before it.
+  // With the generation on the left of a `||` it is evaluated first, and where
+  // the read is awaited - AsyncStorage in the driver app - logout runs inside
+  // that await, after the check has already passed.
+  //
+  // getRefreshToken is called twice: once at the start to learn which token to
+  // exchange, and once in the guard. The side effect has to fire on the SECOND
+  // call only, standing in for a logout that lands while THAT read is in
+  // flight. Firing it on the first call would be caught by either ordering and
+  // prove nothing.
+  const readThatLogsOutOnTheSecondCall = () => {
+    let reads = 0;
+    let generation = 0;
+    return {
+      getRefreshToken: () => {
+        reads += 1;
+        if (reads === 2) generation += 1;   // logout, during the guard's read
+        return 'stored-refresh';            // ...and it still returns the old token
+      },
+      sessionGeneration: () => generation,
+    };
+  };
+
+  it('does not save when logout lands while the stored token is being read', async () => {
+    const { getRefreshToken, sessionGeneration } = readThatLogsOutOnTheSecondCall();
+    const saveTokens = vi.fn();
+
+    const refresher = createTokenRefresher({
+      getRefreshToken,
+      sessionGeneration,
+      requestNewTokens: async () => pair(1),
+      saveTokens,
+      clearTokens: vi.fn(),
+      isTerminal: () => true,
+    });
+
+    await expect(refresher.refresh()).resolves.toEqual({ status: 'superseded' });
+    expect(saveTokens).not.toHaveBeenCalled();
+  });
+
+  it('does not clear either, on the same interleaving', async () => {
+    const { getRefreshToken, sessionGeneration } = readThatLogsOutOnTheSecondCall();
+    const clearTokens = vi.fn();
+
+    const refresher = createTokenRefresher({
+      getRefreshToken,
+      sessionGeneration,
+      requestNewTokens: async () => { throw { response: { status: 401 } }; },
+      saveTokens: vi.fn(),
+      clearTokens,
+      isTerminal: () => true,
+    });
+
+    await expect(refresher.refresh()).resolves.toEqual({ status: 'superseded' });
+    expect(clearTokens).not.toHaveBeenCalled();
   });
 });
