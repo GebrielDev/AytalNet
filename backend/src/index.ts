@@ -10,6 +10,7 @@ import { allowedOrigins, isOriginAllowed } from './config/cors';
 import { User } from './models';
 import routes from './routes';
 import { ApiError, errorHandler, notFound } from './middleware/errorHandler';
+import { userRoom } from './utils/dashboardSockets';
 
 dotenv.config();
 
@@ -51,6 +52,7 @@ io.use(async (socket, next) => {
       next(new Error('User not found'));
       return;
     }
+    socket.data.userId = decoded.id;
     socket.data.tokenExp = decoded.exp;
     next();
   } catch {
@@ -97,6 +99,16 @@ io.on('connection', (socket) => {
   // Previously the room was joined but never emitted to, so it did nothing.
   socket.join('dashboard');
 
+  // A per-user room so deleteUser can sever this user's live connections
+  // immediately, instead of leaving them to run out the token's expiry below.
+  // The role an account holds does not change what the dashboard feed carries -
+  // admins and dispatchers receive the same events - so a demotion needs no
+  // equivalent; the admin-only REST routes re-check the role on every request.
+  const userId = socket.data.userId as number | undefined;
+  if (userId !== undefined) {
+    socket.join(userRoom(userId));
+  }
+
   // The handshake runs once, but a socket lives for as long as the tab stays
   // open. Without this, an expired token - or a dispatcher deleted after
   // connecting - keeps streaming driver names and trip GPS indefinitely, which
@@ -115,6 +127,9 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     clearTimeout(expiryTimer);
     socket.leave('dashboard');
+    if (userId !== undefined) {
+      socket.leave(userRoom(userId));
+    }
   });
 });
 
