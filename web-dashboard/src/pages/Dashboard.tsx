@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
+import { useCallback, useEffect, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
 import { tripsApi, reportsApi } from '../services/api';
 
 // VITE_API_URL ends in /api. Socket.io reads a trailing path as a namespace,
@@ -9,6 +9,9 @@ const SOCKET_URL = new URL(
   import.meta.env.VITE_API_URL || '/',
   window.location.origin
 ).origin;
+
+// Shown in place of a figure that could not be loaded.
+const NO_VALUE = '—';
 
 interface Stats {
   totalDrivers: number;
@@ -29,50 +32,122 @@ interface ActiveTrip {
   vehicle: { plateNumber: string; make: string; model: string };
 }
 
+/**
+ * Whether the dashboard is actually receiving live updates.
+ *
+ * 'live'       - connected; trip events arrive as they happen.
+ * 'connecting' - the transport dropped and socket.io is retrying on its own.
+ * 'offline'    - it is not coming back without help. Socket.io does not retry a
+ *                handshake the server rejected, nor a server-initiated
+ *                disconnect, and the server now closes sockets at token expiry.
+ *                This is the state a tab left open overnight lands in, with a
+ *                board that quietly stopped updating.
+ */
+type FeedState = 'live' | 'connecting' | 'offline';
+
+const FEED: Record<FeedState, { label: string; dot: string; ping: boolean; text: string }> = {
+  live: { label: 'Live', dot: 'bg-green-500', ping: true, text: 'text-green-700' },
+  connecting: { label: 'Reconnecting', dot: 'bg-amber-500', ping: true, text: 'text-amber-700' },
+  offline: { label: 'Not live', dot: 'bg-gray-400', ping: false, text: 'text-gray-500' },
+};
+
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [activeTrips, setActiveTrips] = useState<ActiveTrip[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statsFailed, setStatsFailed] = useState(false);
+  const [tripsFailed, setTripsFailed] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [feed, setFeed] = useState<FeedState>('connecting');
+
+  const fetchData = useCallback(async () => {
+    // allSettled, not all: a failing summary used to discard a perfectly good
+    // list of active trips along with it.
+    const [statsRes, tripsRes] = await Promise.allSettled([
+      reportsApi.getSummary(),
+      tripsApi.getActive(),
+    ]);
+
+    if (statsRes.status === 'fulfilled') {
+      setStats(statsRes.value.data);
+      setStatsFailed(false);
+    } else {
+      console.error('Failed to fetch dashboard summary', statsRes.reason);
+      setStatsFailed(true);
+    }
+
+    if (tripsRes.status === 'fulfilled') {
+      setActiveTrips(tripsRes.value.data);
+      setTripsFailed(false);
+    } else {
+      console.error('Failed to fetch active trips', tripsRes.reason);
+      setTripsFailed(true);
+    }
+  }, []);
+
+  const retry = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchData]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [statsRes, tripsRes] = await Promise.all([
-          reportsApi.getSummary(),
-          tripsApi.getActive(),
-        ]);
-        setStats(statsRes.data);
-        setActiveTrips(tripsRes.data);
-      } catch (error) {
-        console.error('Failed to fetch dashboard data');
-      } finally {
-        setLoading(false);
-      }
-    };
+    let cancelled = false;
 
-    fetchData();
+    fetchData().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
 
     // The server now authenticates the handshake and refuses sockets without a
     // user token, so the feed must present one. The dashboard room is joined
     // server-side once that check passes; there is nothing to emit here.
-    const socket = io(SOCKET_URL, {
+    const socket: Socket = io(SOCKET_URL, {
       auth: { token: localStorage.getItem('accessToken') },
     });
 
+    // The first connect rides along with the fetch above; only a reconnect has
+    // a gap to close.
+    let everConnected = false;
+
+    socket.on('connect', () => {
+      if (cancelled) return;
+      setFeed('live');
+      // Events that fired while the socket was down were queued nowhere.
+      // Without this the board would claim to be live while missing every trip
+      // that started during the gap.
+      if (everConnected) fetchData();
+      everConnected = true;
+    });
+
     socket.on('trip:started', (trip: ActiveTrip) => {
-      setActiveTrips((prev) => [trip, ...prev]);
-      setStats((prev) => prev ? { ...prev, activeTrips: prev.activeTrips + 1 } : null);
+      // A reconnect refetches, so the same trip can arrive twice - once in the
+      // fetch, once from an event still in flight. Two rows with the same React
+      // key is a rendering bug, and the count would be wrong too.
+      setActiveTrips((prev) =>
+        prev.some((t) => t.id === trip.id) ? prev : [trip, ...prev]
+      );
     });
 
     socket.on('trip:ended', (trip: { id: number }) => {
       setActiveTrips((prev) => prev.filter((t) => t.id !== trip.id));
-      setStats((prev) => prev ? { ...prev, activeTrips: prev.activeTrips - 1 } : null);
     });
 
+    // socket.active distinguishes "socket.io is still retrying" from "it has
+    // given up", which is the difference between a blip and a dead feed.
+    const stopped = () => {
+      if (!cancelled) setFeed(socket.active ? 'connecting' : 'offline');
+    };
+    socket.on('disconnect', stopped);
+    socket.on('connect_error', stopped);
+
     return () => {
+      cancelled = true;
       socket.disconnect();
     };
-  }, []);
+  }, [fetchData]);
 
   if (loading) {
     return (
@@ -82,23 +157,35 @@ export default function Dashboard() {
     );
   }
 
+  // A hard 0 is indistinguishable from a quiet fleet, so a stat that could not
+  // be loaded says so rather than inventing a number.
+  const statValue = (value: number | undefined): string | number =>
+    statsFailed || value === undefined ? NO_VALUE : value;
+  const statRatio = (active: number | undefined, total: number | undefined): string =>
+    statsFailed || active === undefined || total === undefined
+      ? NO_VALUE
+      : `${active}/${total}`;
+
+  // Active Trips reads the list rather than a separately maintained counter:
+  // the two used to drift apart, because every socket event patched the
+  // number by hand while the list was rebuilt from the server.
   const statCards = [
-    { label: 'Active Trips', value: stats?.activeTrips || 0, bg: 'bg-emerald-50', text: 'text-emerald-700', icon: (
+    { label: 'Active Trips', value: tripsFailed ? NO_VALUE : activeTrips.length, bg: 'bg-emerald-50', text: 'text-emerald-700', icon: (
       <svg className="w-6 h-6 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5.636 18.364a9 9 0 1012.728 0M12 2.25v6" /></svg>
     )},
-    { label: "Today's Trips", value: stats?.todayTrips || 0, bg: 'bg-blue-50', text: 'text-blue-700', icon: (
+    { label: "Today's Trips", value: statValue(stats?.todayTrips), bg: 'bg-blue-50', text: 'text-blue-700', icon: (
       <svg className="w-6 h-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
     )},
-    { label: 'This Week', value: stats?.weekTrips || 0, bg: 'bg-violet-50', text: 'text-violet-700', icon: (
+    { label: 'This Week', value: statValue(stats?.weekTrips), bg: 'bg-violet-50', text: 'text-violet-700', icon: (
       <svg className="w-6 h-6 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>
     )},
-    { label: 'This Month', value: stats?.monthTrips || 0, bg: 'bg-amber-50', text: 'text-amber-700', icon: (
+    { label: 'This Month', value: statValue(stats?.monthTrips), bg: 'bg-amber-50', text: 'text-amber-700', icon: (
       <svg className="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" /></svg>
     )},
-    { label: 'Active Drivers', value: `${stats?.activeDrivers || 0}/${stats?.totalDrivers || 0}`, bg: 'bg-teal-50', text: 'text-teal-700', icon: (
+    { label: 'Active Drivers', value: statRatio(stats?.activeDrivers, stats?.totalDrivers), bg: 'bg-teal-50', text: 'text-teal-700', icon: (
       <svg className="w-6 h-6 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>
     )},
-    { label: 'Active Vehicles', value: `${stats?.activeVehicles || 0}/${stats?.totalVehicles || 0}`, bg: 'bg-indigo-50', text: 'text-indigo-700', icon: (
+    { label: 'Active Vehicles', value: statRatio(stats?.activeVehicles, stats?.totalVehicles), bg: 'bg-indigo-50', text: 'text-indigo-700', icon: (
       <svg className="w-6 h-6 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25m-2.25 0V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75" /></svg>
     )},
   ];
@@ -109,6 +196,36 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="text-sm text-gray-500 mt-1">Fleet overview and real-time activity</p>
       </div>
+
+      {/* A failed fetch used to go to the console and nowhere else, leaving a
+          dashboard of zeros that reads exactly like a quiet fleet. */}
+      {(statsFailed || tripsFailed) && (
+        <div
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 flex items-start justify-between gap-4"
+        >
+          <div>
+            <p className="text-sm font-semibold text-red-800">
+              {statsFailed && tripsFailed
+                ? "Couldn't load the dashboard"
+                : statsFailed
+                ? "Couldn't load the fleet totals"
+                : "Couldn't load the active trips"}
+            </p>
+            <p className="text-xs text-red-700 mt-1">
+              The figures below are incomplete. Check the connection and try again.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={retry}
+            disabled={refreshing}
+            className="shrink-0 text-sm font-medium px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          >
+            {refreshing ? 'Retrying...' : 'Retry'}
+          </button>
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -128,11 +245,37 @@ export default function Dashboard() {
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Active Trips</h2>
-            <p className="text-xs text-gray-500 mt-0.5">{activeTrips.length} trip{activeTrips.length !== 1 ? 's' : ''} in progress</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {tripsFailed
+                ? 'Count unavailable'
+                : `${activeTrips.length} trip${activeTrips.length !== 1 ? 's' : ''} in progress`}
+            </p>
           </div>
-          <span className="relative flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" />
+          {/* This pinged green whatever the socket was doing, so it reassured
+              most convincingly when the feed was dead. It now reports the real
+              connection state, and says so in words for anyone who cannot
+              distinguish the colours. */}
+          <span className={`flex items-center gap-2 text-xs font-medium ${FEED[feed].text}`}>
+            <span className="relative flex h-2.5 w-2.5">
+              {FEED[feed].ping && (
+                <span
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full ${FEED[feed].dot} opacity-75`}
+                />
+              )}
+              <span
+                className={`relative inline-flex rounded-full h-2.5 w-2.5 ${FEED[feed].dot}`}
+              />
+            </span>
+            {FEED[feed].label}
+            {feed === 'offline' && (
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="underline underline-offset-2 hover:text-gray-700"
+              >
+                Reload
+              </button>
+            )}
           </span>
         </div>
 
@@ -152,7 +295,7 @@ export default function Dashboard() {
               {activeTrips.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-5 py-10 text-center text-sm text-gray-400">
-                    No active trips at the moment
+                    {tripsFailed ? 'Active trips unavailable' : 'No active trips at the moment'}
                   </td>
                 </tr>
               ) : (
@@ -192,7 +335,9 @@ export default function Dashboard() {
         {/* Mobile cards */}
         <div className="md:hidden divide-y divide-gray-100">
           {activeTrips.length === 0 ? (
-            <div className="px-5 py-10 text-center text-sm text-gray-400">No active trips</div>
+            <div className="px-5 py-10 text-center text-sm text-gray-400">
+              {tripsFailed ? 'Active trips unavailable' : 'No active trips'}
+            </div>
           ) : (
             activeTrips.map((trip) => (
               <div key={trip.id} className="p-4 space-y-2">
