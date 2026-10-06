@@ -52,11 +52,11 @@ export default function Dashboard() {
 
     fetchData();
 
-    // Socket.io connection for real-time updates
-    const socket = io(SOCKET_URL);
-
-    socket.on('connect', () => {
-      socket.emit('join:dashboard');
+    // The server now authenticates the handshake and refuses sockets without a
+    // user token, so the feed must present one. The dashboard room is joined
+    // server-side once that check passes; there is nothing to emit here.
+    const socket = io(SOCKET_URL, {
+      auth: { token: localStorage.getItem('accessToken') },
     });
 
     socket.on('trip:started', (trip: ActiveTrip) => {
