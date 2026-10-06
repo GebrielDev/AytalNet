@@ -1,4 +1,18 @@
-FROM node:20-alpine AS builder
+# Debian (glibc), not Alpine (musl), for the build stage.
+#
+# Vite's bundler loads a platform-specific binary, @rollup/rollup-<platform>,
+# which npm records in package-lock.json as an optional dependency for the
+# platform the lockfile was generated on. web-dashboard/package-lock.json is
+# written by developers and by CI, all of them glibc, so it carries
+# @rollup/rollup-linux-x64-gnu and no musl build. On Alpine, npm then has
+# nothing to install and the build dies with "Cannot find module
+# @rollup/rollup-linux-x64-musl".
+#
+# Matching the build image to where the lockfile is produced is what keeps
+# this fixed: regenerating the lockfile on any normal machine cannot
+# reintroduce the mismatch. The runtime stage below stays on Alpine, since it
+# only serves the built files and pulls in no platform binaries.
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
