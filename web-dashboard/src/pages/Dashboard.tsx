@@ -71,26 +71,37 @@ export default function Dashboard() {
   // Two fetches can overlap (Retry pressed during a reconnect refetch). Only
   // the newest may write, or an older response could land last and win.
   const fetchGen = useRef(0);
+  // Each in-flight fetch, by generation, with the op sequence it started at.
+  // An op is still needed while any of them started before it.
+  const inFlight = useRef<Map<number, number>>(new Map());
 
   const applyTripOp = useCallback((apply: (list: ActiveTrip[]) => ActiveTrip[]) => {
     opSeq.current += 1;
     opLog.current.push({ seq: opSeq.current, apply });
-    // Only ops newer than an in-flight fetch are ever replayed; the rest are
-    // dead weight.
-    if (opLog.current.length > 50) opLog.current.splice(0, opLog.current.length - 50);
+    // Prune by what the in-flight fetches could still replay, never by a fixed
+    // length: a cap would evict ops a slow fetch still needs, which is the very
+    // bug the log exists to prevent. With nothing in flight there is nothing to
+    // replay onto, so the log empties.
+    const oldestNeeded = inFlight.current.size
+      ? Math.min(...inFlight.current.values())
+      : opSeq.current;
+    opLog.current = opLog.current.filter((op) => op.seq > oldestNeeded);
     setActiveTrips(apply);
   }, []);
 
   const fetchData = useCallback(async () => {
     const gen = (fetchGen.current += 1);
     const seqAtStart = opSeq.current;
+    inFlight.current.set(gen, seqAtStart);
 
     // allSettled, not all: a failing summary used to discard a perfectly good
     // list of active trips along with it.
     const [statsRes, tripsRes] = await Promise.allSettled([
       reportsApi.getSummary(),
       tripsApi.getActive(),
-    ]);
+    ]).finally(() => {
+      inFlight.current.delete(gen);
+    });
 
     if (gen !== fetchGen.current) return;
 
