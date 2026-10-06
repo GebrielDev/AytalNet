@@ -131,7 +131,7 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
 
     const io = req.app.get('io');
     if (io) {
-      io.emit('trip:started', fullTrip);
+      io.to('dashboard').emit('trip:started', fullTrip);
     }
 
     res.status(201).json(fullTrip);
@@ -164,7 +164,7 @@ export const endTrip = async (req: Request, res: Response): Promise<void> => {
     await Vehicle.update({ currentOdometer: endOdometer }, { where: { id: trip.vehicleId } });
 
     const io = req.app.get('io');
-    if (io) io.emit('trip:ended', trip);
+    if (io) io.to('dashboard').emit('trip:ended', trip);
 
     res.json(trip);
   } catch (error) {
@@ -251,7 +251,7 @@ export const cancelTrip = async (req: Request, res: Response): Promise<void> => 
     await trip.update({ status: 'cancelled', endTime: new Date() });
 
     const io = req.app.get('io');
-    if (io) io.emit('trip:cancelled', { id: trip.id });
+    if (io) io.to('dashboard').emit('trip:cancelled', { id: trip.id });
 
     res.json({ message: 'Trip cancelled' });
   } catch (error) {
