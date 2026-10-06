@@ -35,7 +35,11 @@ io.use(async (socket, next) => {
     return;
   }
   try {
-    const decoded = jwt.verify(token, authConfig.jwtSecret) as { id: number; type?: string };
+    const decoded = jwt.verify(token, authConfig.jwtSecret) as {
+      id: number;
+      type?: string;
+      exp?: number;
+    };
     if (decoded.type !== 'user') {
       next(new Error('Dashboard access is limited to dispatchers and administrators'));
       return;
@@ -47,6 +51,7 @@ io.use(async (socket, next) => {
       next(new Error('User not found'));
       return;
     }
+    socket.data.tokenExp = decoded.exp;
     next();
   } catch {
     next(new Error('Invalid token'));
@@ -92,7 +97,23 @@ io.on('connection', (socket) => {
   // Previously the room was joined but never emitted to, so it did nothing.
   socket.join('dashboard');
 
+  // The handshake runs once, but a socket lives for as long as the tab stays
+  // open. Without this, an expired token - or a dispatcher deleted after
+  // connecting - keeps streaming driver names and trip GPS indefinitely, which
+  // would leave the socket weaker than the REST path, where authenticateToken
+  // re-checks the user on every request.
+  //
+  // Closing at the token's own expiry bounds that to the token lifetime and
+  // makes the client reconnect, which re-runs the full handshake.
+  const exp = socket.data.tokenExp as number | undefined;
+  const expiresInMs = exp ? exp * 1000 - Date.now() : 0;
+  const expiryTimer = setTimeout(
+    () => socket.disconnect(true),
+    Math.max(0, expiresInMs)
+  );
+
   socket.on('disconnect', () => {
+    clearTimeout(expiryTimer);
     socket.leave('dashboard');
   });
 });
