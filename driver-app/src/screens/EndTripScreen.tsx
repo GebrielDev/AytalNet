@@ -26,12 +26,18 @@ export default function EndTripScreen() {
   };
 
   const endTrip = async () => {
-    if (!odometer || !odometerPhoto) {
+    if (odometer.trim() === '' || !odometerPhoto) {
       Alert.alert('Error', 'Please enter odometer reading and take a photo');
       return;
     }
 
     const endOdometerValue = parseFloat(odometer);
+    // Unparseable input used to reach the API as null, which completed the trip
+    // with no mileage rather than telling the driver anything.
+    if (!Number.isFinite(endOdometerValue) || endOdometerValue < 0) {
+      Alert.alert('Error', 'Enter the odometer reading as a number, for example 10432');
+      return;
+    }
     if (endOdometerValue < trip.startOdometer) {
       Alert.alert('Error', 'End odometer cannot be less than start odometer');
       return;

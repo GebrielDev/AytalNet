@@ -89,6 +89,22 @@ export const getTripById = async (req: Request, res: Response): Promise<void> =>
   }
 };
 
+/**
+ * An odometer reading has to be a real, non-negative number.
+ *
+ * The driver app requires one on both screens, but client validation is not
+ * the guarantee: a trip could be ended through the API with no reading at all,
+ * which completed the trip, left total_mileage as NaN and never updated the
+ * vehicle's odometer - so the trip silently vanished from mileage reporting.
+ * A missing start reading only failed because start_odometer is NOT NULL,
+ * surfacing as a 500 rather than telling the caller what was wrong, and a
+ * negative reading was accepted outright.
+ *
+ * Zero is deliberately valid: a new vehicle genuinely starts there.
+ */
+const isOdometerReading = (value: unknown): boolean =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
 export const startTrip = async (req: Request, res: Response): Promise<void> => {
   try {
     const driver = req.driver!;
@@ -103,6 +119,11 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
 
     if (!isCoordinate(startLatitude, 90) || !isCoordinate(startLongitude, 180)) {
       res.status(400).json({ error: 'A valid start latitude and longitude are required' });
+      return;
+    }
+
+    if (!isOdometerReading(startOdometer)) {
+      res.status(400).json({ error: 'A valid start odometer reading is required' });
       return;
     }
 
@@ -159,11 +180,21 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
 export const endTrip = async (req: Request, res: Response): Promise<void> => {
   try {
     const driver = req.driver!;
-    const { endOdometer, endLatitude, endLongitude, endAddress } = req.body;
+    // `?? {}` mirrors startTrip. express.json() already defaults req.body to
+    // an object, so this is not load-bearing today - it keeps the guard below
+    // working if this route is ever mounted without that parser.
+    const { endOdometer, endLatitude, endLongitude, endAddress } = req.body ?? {};
 
     const trip = await Trip.findOne({ where: { id: req.params.id, driverId: driver.id, status: 'in_progress' } });
     if (!trip) {
       res.status(404).json({ error: 'Active trip not found' });
+      return;
+    }
+
+    // Before the comparison below: an absent reading is not "less than start",
+    // so it slipped through and completed the trip with no mileage.
+    if (!isOdometerReading(endOdometer)) {
+      res.status(400).json({ error: 'A valid end odometer reading is required' });
       return;
     }
 
