@@ -3,9 +3,30 @@ import { User, Driver, PasswordResetToken } from '../models';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../middleware/auth';
 import { sendPasswordResetEmail, isEmailConfigured } from '../config/email';
 
+/**
+ * Pull a required string out of a request body.
+ *
+ * Sequelize validates `where` values before it opens a connection and throws
+ * on anything that is not a scalar - `WHERE parameter "email" has invalid
+ * "undefined" value` for a missing field, `Invalid value {...}` for a nested
+ * object. Passing req.body fields straight into findOne therefore turned a
+ * malformed request into a 500: the wrong status for the caller, and a server
+ * fault recorded for what is a client error.
+ */
+const requiredString = (body: unknown, field: string): string | null => {
+  const value = (body as Record<string, unknown> | null | undefined)?.[field];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+};
+
 export const loginUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const email = requiredString(req.body, 'email');
+    const password = requiredString(req.body, 'password');
+    if (!email || !password) {
+      res.status(400).json({ error: 'Email and password are required' });
+      return;
+    }
+
     const user = await User.findOne({ where: { email } });
 
     if (!user || !(await user.validatePassword(password))) {
@@ -20,14 +41,23 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
       refreshToken: generateRefreshToken(payload),
     });
   } catch (error) {
+    // `details: String(error)` used to go out with this response, handing an
+    // unauthenticated caller Sequelize's message - table and column names, and
+    // sometimes the failing SQL. It belongs in the log, not the body.
     console.error('User login error:', error);
-    res.status(500).json({ error: 'Login failed', details: String(error) });
+    res.status(500).json({ error: 'Login failed' });
   }
 };
 
 export const loginDriver = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const email = requiredString(req.body, 'email');
+    const password = requiredString(req.body, 'password');
+    if (!email || !password) {
+      res.status(400).json({ error: 'Email and password are required' });
+      return;
+    }
+
     const driver = await Driver.findOne({ where: { email } });
 
     if (!driver || driver.status !== 'active' || !(await driver.validatePassword(password))) {
@@ -48,8 +78,13 @@ export const loginDriver = async (req: Request, res: Response): Promise<void> =>
 
 export const refreshToken = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { refreshToken } = req.body;
-    const payload = verifyRefreshToken(refreshToken);
+    const token = requiredString(req.body, 'refreshToken');
+    if (!token) {
+      res.status(400).json({ error: 'A refresh token is required' });
+      return;
+    }
+
+    const payload = verifyRefreshToken(token);
 
     if (!payload) {
       res.status(401).json({ error: 'Invalid refresh token' });
@@ -81,8 +116,12 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
     // Periodically clean up expired tokens
     await PasswordResetToken.cleanExpired();
 
-    const { email, type } = req.body;
-    const accountType = type === 'driver' ? 'driver' : 'user';
+    const email = requiredString(req.body, 'email');
+    if (!email) {
+      res.status(400).json({ error: 'An email address is required' });
+      return;
+    }
+    const accountType = (req.body as { type?: unknown })?.type === 'driver' ? 'driver' : 'user';
 
     // Always respond with success to prevent email enumeration
     const successMsg = { message: 'If an account with that email exists, a reset link has been generated.' };

@@ -1,4 +1,5 @@
-import axios from 'axios';
+import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import { createTokenRefresher } from './tokenRefresh';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -15,15 +16,58 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+const refresher = createTokenRefresher({
+  getRefreshToken: () => localStorage.getItem('refreshToken'),
+  // A bare axios call, not `api`: going through the instance would attach the
+  // dead access token and recurse through this very interceptor on its 401.
+  requestNewTokens: async (refreshToken) => {
+    const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+    return { accessToken: data.accessToken, refreshToken: data.refreshToken };
+  },
+  saveTokens: ({ accessToken, refreshToken }) => {
+    localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('refreshToken', refreshToken);
+  },
+  clearTokens: () => {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+  },
+});
+
+type RetriableConfig = InternalAxiosRequestConfig & { _retried?: boolean };
+
+/**
+ * The access token lasts an hour, the refresh token seven days, and
+ * /auth/refresh trades one for the other. This used to throw both away on the
+ * first 401 and bounce to the login screen, so a dispatcher was signed out
+ * every hour mid-task with no warning and no way back but typing a password.
+ */
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
+  async (error: AxiosError) => {
+    const original = error.config as RetriableConfig | undefined;
+
+    // `_retried` bounds this to one attempt per request: if the refreshed
+    // token is also refused, the 401 is real and must surface.
+    const isRefreshable =
+      error.response?.status === 401 &&
+      original &&
+      !original._retried &&
+      !original.url?.includes('/auth/refresh') &&
+      !original.url?.includes('/auth/login');
+
+    if (!isRefreshable) return Promise.reject(error);
+
+    original._retried = true;
+    const accessToken = await refresher.refresh();
+
+    if (!accessToken) {
       window.location.href = '/login';
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+
+    original.headers.Authorization = `Bearer ${accessToken}`;
+    return api(original);
   }
 );
 

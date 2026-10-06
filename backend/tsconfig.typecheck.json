@@ -1,0 +1,14 @@
+{
+  // Everything the build covers, plus the test files the build deliberately
+  // leaves out - so a broken test still fails the typecheck.
+  //
+  // rootDir is dropped because vitest.config.ts sits beside package.json
+  // rather than under src/, and noEmit means it no longer constrains anything.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["src/**/*", "vitest.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

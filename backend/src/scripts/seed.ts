@@ -3,8 +3,30 @@ dotenv.config();
 
 import { connectDatabase } from '../config/database';
 import { User, Driver, Vehicle, Trip, TripPhoto } from '../models';
+import { resolvePassword, productionSeedBlocked } from './seedCredentials';
 
 const seed = async () => {
+  // This writes demo drivers, vehicles and trips, and creates accounts. None
+  // of that belongs in a live fleet, so reaching production has to be a
+  // deliberate act rather than a mistyped environment.
+  if (productionSeedBlocked()) {
+    console.error(
+      'Refusing to seed: NODE_ENV is production.\n' +
+      'This script creates demo drivers, vehicles and trips alongside the\n' +
+      'accounts. If you really mean to run it here, set ALLOW_PRODUCTION_SEED=yes.'
+    );
+    process.exit(1);
+  }
+
+  // Passwords used to be literals in this file, so every environment that had
+  // ever been seeded carried an administrator account whose password was in
+  // source control. They are now supplied through the environment or generated
+  // per run, and printed once below - they are hashed on save and cannot be
+  // read back afterwards.
+  const adminPassword = resolvePassword('SEED_ADMIN_PASSWORD');
+  const dispatcherPassword = resolvePassword('SEED_DISPATCHER_PASSWORD');
+  const driverPassword = resolvePassword('SEED_DRIVER_PASSWORD');
+
   await connectDatabase();
 
   console.log('Seeding database...');
@@ -14,11 +36,11 @@ const seed = async () => {
   if (!adminExists) {
     await User.create({
       email: 'admin@fleet.com',
-      passwordHash: 'admin123',
+      passwordHash: adminPassword.value,
       name: 'Admin User',
       role: 'admin',
     });
-    console.log('Admin user created: admin@fleet.com / admin123');
+    console.log('Admin user created: admin@fleet.com');
   }
 
   // Create dispatcher for dashboard
@@ -26,27 +48,27 @@ const seed = async () => {
   if (!dispatcherExists) {
     await User.create({
       email: 'dispatcher@fleet.com',
-      passwordHash: 'dispatch123',
+      passwordHash: dispatcherPassword.value,
       name: 'Dispatcher User',
       role: 'dispatcher',
     });
-    console.log('Dispatcher created: dispatcher@fleet.com / dispatch123');
+    console.log('Dispatcher created: dispatcher@fleet.com');
   }
 
   // Create sample drivers for driver app
   const drivers = [
-    { employeeId: 'DRV001', name: 'John Smith', email: 'john@fleet.com', phone: '555-0101', passwordHash: 'driver123', licenseNumber: 'DL-001-2024' },
-    { employeeId: 'DRV002', name: 'Maria Garcia', email: 'maria@fleet.com', phone: '555-0102', passwordHash: 'driver123', licenseNumber: 'DL-002-2024' },
-    { employeeId: 'DRV003', name: 'James Wilson', email: 'james@fleet.com', phone: '555-0103', passwordHash: 'driver123', licenseNumber: 'DL-003-2024' },
-    { employeeId: 'DRV004', name: 'Sarah Johnson', email: 'sarah@fleet.com', phone: '555-0104', passwordHash: 'driver123', licenseNumber: 'DL-004-2024' },
-    { employeeId: 'DRV005', name: 'Michael Brown', email: 'michael@fleet.com', phone: '555-0105', passwordHash: 'driver123', licenseNumber: 'DL-005-2024' },
+    { employeeId: 'DRV001', name: 'John Smith', email: 'john@fleet.com', phone: '555-0101', passwordHash: driverPassword.value, licenseNumber: 'DL-001-2024' },
+    { employeeId: 'DRV002', name: 'Maria Garcia', email: 'maria@fleet.com', phone: '555-0102', passwordHash: driverPassword.value, licenseNumber: 'DL-002-2024' },
+    { employeeId: 'DRV003', name: 'James Wilson', email: 'james@fleet.com', phone: '555-0103', passwordHash: driverPassword.value, licenseNumber: 'DL-003-2024' },
+    { employeeId: 'DRV004', name: 'Sarah Johnson', email: 'sarah@fleet.com', phone: '555-0104', passwordHash: driverPassword.value, licenseNumber: 'DL-004-2024' },
+    { employeeId: 'DRV005', name: 'Michael Brown', email: 'michael@fleet.com', phone: '555-0105', passwordHash: driverPassword.value, licenseNumber: 'DL-005-2024' },
   ];
 
   for (const driverData of drivers) {
     const exists = await Driver.findOne({ where: { email: driverData.email } });
     if (!exists) {
       await Driver.create(driverData);
-      console.log(`Driver created: ${driverData.email} / driver123`);
+      console.log(`Driver created: ${driverData.email}`);
     }
   }
 
@@ -210,16 +232,21 @@ const seed = async () => {
     }
   }
 
+  const note = (p: { fromEnv: boolean }) =>
+    p.fromEnv ? '(from the environment)' : '(generated - this is the only time it is shown)';
+
   console.log('\n=== Seeding Complete ===');
   console.log('\nDashboard Login:');
-  console.log('  admin@fleet.com / admin123');
-  console.log('  dispatcher@fleet.com / dispatch123');
-  console.log('\nDriver App Login (all use password: driver123):');
-  console.log('  john@fleet.com');
-  console.log('  maria@fleet.com');
-  console.log('  james@fleet.com');
-  console.log('  sarah@fleet.com');
-  console.log('  michael@fleet.com');
+  console.log(`  admin@fleet.com / ${adminPassword.value} ${note(adminPassword)}`);
+  console.log(`  dispatcher@fleet.com / ${dispatcherPassword.value} ${note(dispatcherPassword)}`);
+  console.log(`\nDriver App Login (all five drivers share one password):`);
+  console.log(`  ${driverPassword.value} ${note(driverPassword)}`);
+  console.log('  john@fleet.com, maria@fleet.com, james@fleet.com, sarah@fleet.com, michael@fleet.com');
+  console.log(
+    '\nThese are stored only as hashes. Save them now, or reset them through\n' +
+    'the forgot-password flow. To choose them yourself, set SEED_ADMIN_PASSWORD,\n' +
+    'SEED_DISPATCHER_PASSWORD and SEED_DRIVER_PASSWORD before running.'
+  );
   
   process.exit(0);
 };
