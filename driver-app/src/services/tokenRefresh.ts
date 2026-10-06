@@ -5,7 +5,8 @@
  * which is where its unit tests live - the two apps are separate packages with
  * no shared workspace to put it in. The only difference is that AsyncStorage
  * is async, so getRefreshToken, saveTokens and clearTokens return promises.
- * That asynchrony is precisely why sessionGeneration exists; see its note.
+ * That asynchrony is why sessionGeneration exists, and why the guards below
+ * read the stored token first and check the generation last.
  *
  * The API issues an access token good for an hour and a refresh token good for
  * seven days, and exposes POST /auth/refresh to trade one for a new pair. The
@@ -105,10 +106,14 @@ export const createTokenRefresher = (options: RefresherOptions): Refresher => {
         // old session back and a reload would sign the user in again; if a
         // different account signed in, writing it would overwrite their
         // credentials while the UI showed them as the current user.
-        if (
-          options.sessionGeneration() !== generation ||
-          (await options.getRefreshToken()) !== refreshToken
-        ) {
+        // Order matters, and it is the whole point. The stored token is read
+        // FIRST and the generation checked LAST, so that nothing can run
+        // between the generation check and the write. With the generation on
+        // the left of a `||`, it is evaluated before the token read - and
+        // where that read is awaited (the driver app), logout lands inside the
+        // await, after the check has already passed.
+        const stored = await options.getRefreshToken();
+        if (stored !== refreshToken || options.sessionGeneration() !== generation) {
           return { status: 'superseded' };
         }
 
@@ -127,10 +132,9 @@ export const createTokenRefresher = (options: RefresherOptions): Refresher => {
         // nothing about whoever is signed in now. Clearing unconditionally
         // would sign out an account that logged in while this was in flight,
         // on the strength of the previous session's 401.
-        if (
-          options.sessionGeneration() !== generation ||
-          (await options.getRefreshToken()) !== refreshToken
-        ) {
+        // Same ordering as the save path above, for the same reason.
+        const stored = await options.getRefreshToken();
+        if (stored !== refreshToken || options.sessionGeneration() !== generation) {
           return { status: 'superseded' };
         }
 

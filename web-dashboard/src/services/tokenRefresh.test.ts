@@ -282,3 +282,62 @@ describe('logout that lands before the stored token can be re-read', () => {
     expect(saveTokens).toHaveBeenCalled();
   });
 });
+
+describe('logout landing during the stored-token read', () => {
+  // The generation check has to come AFTER the token is read, not before it.
+  // With the generation on the left of a `||` it is evaluated first, and where
+  // the read is awaited - AsyncStorage in the driver app - logout runs inside
+  // that await, after the check has already passed.
+  //
+  // getRefreshToken is called twice: once at the start to learn which token to
+  // exchange, and once in the guard. The side effect has to fire on the SECOND
+  // call only, standing in for a logout that lands while THAT read is in
+  // flight. Firing it on the first call would be caught by either ordering and
+  // prove nothing.
+  const readThatLogsOutOnTheSecondCall = () => {
+    let reads = 0;
+    let generation = 0;
+    return {
+      getRefreshToken: () => {
+        reads += 1;
+        if (reads === 2) generation += 1;   // logout, during the guard's read
+        return 'stored-refresh';            // ...and it still returns the old token
+      },
+      sessionGeneration: () => generation,
+    };
+  };
+
+  it('does not save when logout lands while the stored token is being read', async () => {
+    const { getRefreshToken, sessionGeneration } = readThatLogsOutOnTheSecondCall();
+    const saveTokens = vi.fn();
+
+    const refresher = createTokenRefresher({
+      getRefreshToken,
+      sessionGeneration,
+      requestNewTokens: async () => pair(1),
+      saveTokens,
+      clearTokens: vi.fn(),
+      isTerminal: () => true,
+    });
+
+    await expect(refresher.refresh()).resolves.toEqual({ status: 'superseded' });
+    expect(saveTokens).not.toHaveBeenCalled();
+  });
+
+  it('does not clear either, on the same interleaving', async () => {
+    const { getRefreshToken, sessionGeneration } = readThatLogsOutOnTheSecondCall();
+    const clearTokens = vi.fn();
+
+    const refresher = createTokenRefresher({
+      getRefreshToken,
+      sessionGeneration,
+      requestNewTokens: async () => { throw { response: { status: 401 } }; },
+      saveTokens: vi.fn(),
+      clearTokens,
+      isTerminal: () => true,
+    });
+
+    await expect(refresher.refresh()).resolves.toEqual({ status: 'superseded' });
+    expect(clearTokens).not.toHaveBeenCalled();
+  });
+});
