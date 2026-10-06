@@ -27,8 +27,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authApi.getMe()
         .then((res) => setUser(res.data.user))
         .catch(() => {
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
+          // Deliberately does not clear anything. The response interceptor in
+          // services/api.ts owns session termination: it refreshes on a 401
+          // and clears the credentials only when the server rejects the
+          // refresh token itself. Clearing here as well was double policy with
+          // less information - the error that arrives is the original 401, so
+          // an outage during the refresh was indistinguishable from a real
+          // one, and a dispatcher lost a refresh token still good for days
+          // because the backend was briefly down.
+          //
+          // The user stays null, so ProtectedRoute shows the login screen; if
+          // the credentials are in fact still valid, the next load picks the
+          // session back up.
         })
         .finally(() => setLoading(false));
     } else {

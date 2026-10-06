@@ -80,7 +80,37 @@ npx expo start
 3. Add environment variable:
    - `VITE_API_URL` (your deployed backend URL + /api)
 
-### 3. Driver App
+### 3. Data retention (required for the published privacy policy)
+
+The privacy policy at `landing/public/privacy.html` tells drivers that after
+seven years their photographs are deleted and their trip records anonymised.
+That is a commitment to them, and it is only kept if something runs:
+
+```bash
+npm run retention              # report what is due, change nothing
+npm run retention -- --commit  # delete and anonymise
+```
+
+It reports by default. Both steps are irreversible - a deleted Cloudinary
+image is gone, and an anonymised trip cannot be re-linked to its driver - so
+nothing happens without `--commit`, and **no schedule is configured for you.**
+
+To enforce the policy, add a Railway cron service:
+
+1. Add a service to the project, same repo, root directory `backend`
+2. Set its start command to `npm run retention -- --commit`
+3. Set the cron schedule to `0 3 1 * *` (03:00 UTC on the first of the month -
+   the window is seven years, so daily buys nothing)
+4. Give it the same `DATABASE_URL` and `CLOUDINARY_*` variables as the backend
+
+Run it without `--commit` once first and read what it reports. The job exits
+non-zero if any Cloudinary asset could not be deleted, keeping those records so
+the next run retries them.
+
+Until that service exists, the seven-year promise is documented but not
+enforced.
+
+### 4. Driver App
 
 For the mobile app:
 1. Update `src/services/api.ts` with your production API URL

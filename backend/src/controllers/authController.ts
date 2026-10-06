@@ -91,6 +91,21 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
+    // The signature alone is not enough. A refresh token is valid for seven
+    // days, so without this a deleted dispatcher or a driver set to inactive
+    // could keep minting fresh one-hour access tokens for a week after their
+    // account was closed. authenticateToken makes the same check on every
+    // request, and the socket handshake does too; this was the one path that
+    // did not.
+    const account = payload.type === 'user'
+      ? await User.findByPk(payload.id)
+      : await Driver.findByPk(payload.id);
+
+    if (!account || (payload.type === 'driver' && (account as Driver).status !== 'active')) {
+      res.status(401).json({ error: 'Account is no longer active' });
+      return;
+    }
+
     const newPayload = { id: payload.id, email: payload.email, type: payload.type };
     res.json({
       accessToken: generateAccessToken(newPayload),

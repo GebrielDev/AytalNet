@@ -35,8 +35,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setDriver(res.data.driver);
       }
     } catch {
-      await AsyncStorage.removeItem('accessToken');
-      await AsyncStorage.removeItem('refreshToken');
+      // Deliberately does not clear anything. The response interceptor in
+      // services/api.ts owns session termination: the refresher clears the
+      // credentials when the server rejects the refresh token, and the
+      // interceptor clears them when a retried request still 401s because the
+      // account is gone. Clearing here as well was double policy with less
+      // information - the error that arrives is the original 401, so an app
+      // opened out of signal looked identical to a closed account, and the
+      // driver lost a refresh token still good for days.
+      //
+      // The driver stays null, so the login screen shows; if the credentials
+      // are still valid, the next launch picks the session back up.
     } finally {
       setLoading(false);
     }

@@ -16,6 +16,11 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+const clearTokens = () => {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+};
+
 const refresher = createTokenRefresher({
   getRefreshToken: () => localStorage.getItem('refreshToken'),
   // A bare axios call, not `api`: going through the instance would attach the
@@ -28,9 +33,13 @@ const refresher = createTokenRefresher({
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
   },
-  clearTokens: () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
+  clearTokens,
+  // Only a verdict from the server ends the session. A rejection with no
+  // response at all is an outage, and signing someone out over one would be
+  // throwing away a refresh token that is probably still good.
+  isTerminal: (error) => {
+    const status = (error as AxiosError)?.response?.status;
+    return status === 400 || status === 401 || status === 403;
   },
 });
 
@@ -56,17 +65,35 @@ api.interceptors.response.use(
       !original.url?.includes('/auth/refresh') &&
       !original.url?.includes('/auth/login');
 
-    if (!isRefreshable) return Promise.reject(error);
+    if (!isRefreshable) {
+      // A 401 on a request that already carried a freshly minted token means
+      // the token is fine and the account is not: deleted, or a driver made
+      // inactive. /auth/refresh only verifies the refresh token's signature,
+      // so it keeps succeeding; without this the dashboard would sit there
+      // looking signed in and re-running the same doomed cycle on every
+      // request.
+      if (error.response?.status === 401 && original?._retried) {
+        clearTokens();
+        window.location.href = '/login';
+      }
+      return Promise.reject(error);
+    }
 
     original._retried = true;
-    const accessToken = await refresher.refresh();
+    const result = await refresher.refresh();
 
-    if (!accessToken) {
+    if (result.status === 'expired') {
       window.location.href = '/login';
       return Promise.reject(error);
     }
 
-    original.headers.Authorization = `Bearer ${accessToken}`;
+    if (result.status === 'unavailable') {
+      // Credentials kept: the server never gave a verdict. The request fails
+      // and the page reports it, which beats a sign-out over a flaky minute.
+      return Promise.reject(error);
+    }
+
+    original.headers.Authorization = `Bearer ${result.accessToken}`;
     return api(original);
   }
 );

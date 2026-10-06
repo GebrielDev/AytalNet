@@ -7,6 +7,8 @@ import request from 'supertest';
 // logic and nothing else.
 const findOneUser = vi.fn();
 const findOneDriver = vi.fn();
+const findByPkUser = vi.fn();
+const findByPkDriver = vi.fn();
 
 /**
  * Sequelize validates `where` values before it ever opens a connection, and
@@ -33,8 +35,14 @@ const sequelizeLikeFindOne = (spy: ReturnType<typeof vi.fn>) =>
   };
 
 vi.mock('../models', () => ({
-  User: { findOne: (o: never) => sequelizeLikeFindOne(findOneUser)(o) },
-  Driver: { findOne: (o: never) => sequelizeLikeFindOne(findOneDriver)(o) },
+  User: {
+    findOne: (o: never) => sequelizeLikeFindOne(findOneUser)(o),
+    findByPk: (...a: unknown[]) => findByPkUser(...a),
+  },
+  Driver: {
+    findOne: (o: never) => sequelizeLikeFindOne(findOneDriver)(o),
+    findByPk: (...a: unknown[]) => findByPkDriver(...a),
+  },
   PasswordResetToken: {
     cleanExpired: vi.fn(),
     createToken: vi.fn().mockResolvedValue('tok'),
@@ -50,7 +58,11 @@ vi.mock('../config/email', () => ({
 vi.mock('../middleware/auth', () => ({
   generateAccessToken: () => 'access',
   generateRefreshToken: () => 'refresh',
-  verifyRefreshToken: (t: string) => (t === 'good' ? { id: 1, email: 'a@b.c', type: 'user' } : null),
+  verifyRefreshToken: (t: string) => {
+    if (t === 'good') return { id: 1, email: 'a@b.c', type: 'user' };
+    if (t === 'good-driver') return { id: 1, email: 'd@b.c', type: 'driver' };
+    return null;
+  },
   authenticateToken: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
@@ -162,6 +174,13 @@ describe('POST /api/auth/driver/login', () => {
 });
 
 describe('POST /api/auth/refresh', () => {
+  beforeEach(() => {
+    findByPkUser.mockReset();
+    findByPkDriver.mockReset();
+    findByPkUser.mockResolvedValue({ id: 1 });
+    findByPkDriver.mockResolvedValue({ id: 1, status: 'active' });
+  });
+
   it('rejects an empty body with 400', async () => {
     const app = await buildApp();
     const res = await request(app).post('/api/auth/refresh').send({});
@@ -179,6 +198,39 @@ describe('POST /api/auth/refresh', () => {
   it('issues a new pair for a valid refresh token', async () => {
     const app = await buildApp();
     const res = await request(app).post('/api/auth/refresh').send({ refreshToken: 'good' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBe('access');
+  });
+
+  // A refresh token lives for seven days. Checking only its signature let a
+  // closed account keep minting hour-long access tokens for a week - the one
+  // auth path that did not re-check the account, while authenticateToken and
+  // the socket handshake both did.
+  it('refuses to refresh for a user whose account is gone', async () => {
+    findByPkUser.mockResolvedValue(null);
+    const app = await buildApp();
+    const res = await request(app).post('/api/auth/refresh').send({ refreshToken: 'good' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.accessToken).toBeUndefined();
+  });
+
+  it('refuses to refresh for a driver who has been deactivated', async () => {
+    findByPkDriver.mockResolvedValue({ id: 1, status: 'inactive' });
+    const app = await buildApp();
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: 'good-driver' });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('still refreshes for an active driver', async () => {
+    const app = await buildApp();
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: 'good-driver' });
 
     expect(res.status).toBe(200);
     expect(res.body.accessToken).toBe('access');

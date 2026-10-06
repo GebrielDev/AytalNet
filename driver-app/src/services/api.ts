@@ -35,6 +35,12 @@ const refresher = createTokenRefresher({
   clearTokens: async () => {
     await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
   },
+  // Only a verdict from the server ends the session. A driver out of signal
+  // must not be signed out mid-shift because a refresh could not be delivered.
+  isTerminal: (error) => {
+    const status = (error as AxiosError)?.response?.status;
+    return status === 400 || status === 401 || status === 403;
+  },
 });
 
 type RetriableConfig = InternalAxiosRequestConfig & { _retried?: boolean };
@@ -57,13 +63,25 @@ api.interceptors.response.use(
       !original.url?.includes('/auth/refresh') &&
       !original.url?.includes('/auth/driver/login');
 
-    if (!isRefreshable) return Promise.reject(error);
+    if (!isRefreshable) {
+      // A 401 on a request that already carried a freshly minted token means
+      // the account is gone or has been deactivated, not that the token aged
+      // out. Clear up rather than looping on a refresh that keeps succeeding
+      // while every real request keeps failing.
+      if (error.response?.status === 401 && original?._retried) {
+        await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
+      }
+      return Promise.reject(error);
+    }
 
     original._retried = true;
-    const accessToken = await refresher.refresh();
-    if (!accessToken) return Promise.reject(error);
+    const result = await refresher.refresh();
+    // 'unavailable' keeps the credentials: the request failed, the session did
+    // not. 'expired' has already cleared them; AuthContext sends the driver to
+    // the login screen on next launch.
+    if (result.status !== 'refreshed') return Promise.reject(error);
 
-    original.headers.Authorization = `Bearer ${accessToken}`;
+    original.headers.Authorization = `Bearer ${result.accessToken}`;
     return api(original);
   }
 );
