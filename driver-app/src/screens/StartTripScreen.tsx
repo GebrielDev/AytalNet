@@ -54,7 +54,16 @@ export default function StartTripScreen() {
   };
 
   const startTrip = async () => {
-    if (!assignedVehicle || !odometer || !licensePlatePhoto || !selfiePhoto || !odometerPhoto) {
+    // Checked as a number rather than a non-empty string: "0" is a legitimate
+    // reading on a new vehicle, and anything unparseable used to reach the API
+    // as null and come back as a bare "Failed to start trip".
+    const odometerValue = parseFloat(odometer);
+    if (odometer.trim() !== '' && !(Number.isFinite(odometerValue) && odometerValue >= 0)) {
+      Alert.alert('Error', 'Enter the odometer reading as a number, for example 10432');
+      return;
+    }
+
+    if (!assignedVehicle || odometer.trim() === '' || !licensePlatePhoto || !selfiePhoto || !odometerPhoto) {
       Alert.alert('Error', 'Please complete all required fields');
       return;
     }
@@ -65,7 +74,7 @@ export default function StartTripScreen() {
 
       const tripRes = await tripsApi.start({
         vehicleId: assignedVehicle.id,
-        startOdometer: parseFloat(odometer),
+        startOdometer: odometerValue,
         startLatitude: location.coords.latitude,
         startLongitude: location.coords.longitude,
       });
@@ -134,7 +143,7 @@ export default function StartTripScreen() {
         )}
       </TouchableOpacity>
 
-      <Text style={styles.sectionTitle}>Odometer Reading</Text>
+      <Text style={styles.sectionTitle}>Odometer Reading *</Text>
       <TextInput
         style={styles.input}
         placeholder="Enter current odometer"
