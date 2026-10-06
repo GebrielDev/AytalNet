@@ -37,6 +37,19 @@ const seed = async () => {
   // read the output off with a password that cannot work.
   const created = { admin: false, dispatcher: false, drivers: [] as string[] };
 
+  // Printed the moment an account exists, not only in the summary at the end.
+  // The seed goes on to write vehicles, trips and photos; if any of those
+  // throws, the run dies before the summary and the account is left with a
+  // random password nobody ever saw - and a re-run correctly refuses to print
+  // one, because it did not set it. The credential has to be out of the
+  // program before anything else can fail.
+  const announce = (label: string, password: { value: string; fromEnv: boolean }) => {
+    console.log(
+      `  >> ${label} / ${password.value}` +
+      (password.fromEnv ? ' (from the environment)' : ' (generated - save this now)')
+    );
+  };
+
   // Create admin user for dashboard
   const adminExists = await User.findOne({ where: { email: 'admin@fleet.com' } });
   if (!adminExists) {
@@ -47,7 +60,8 @@ const seed = async () => {
       role: 'admin',
     });
     created.admin = true;
-    console.log('Admin user created: admin@fleet.com');
+    console.log('Admin user created:');
+    announce('admin@fleet.com', adminPassword);
   }
 
   // Create dispatcher for dashboard
@@ -60,7 +74,8 @@ const seed = async () => {
       role: 'dispatcher',
     });
     created.dispatcher = true;
-    console.log('Dispatcher created: dispatcher@fleet.com');
+    console.log('Dispatcher created:');
+    announce('dispatcher@fleet.com', dispatcherPassword);
   }
 
   // Create sample drivers for driver app
@@ -77,7 +92,8 @@ const seed = async () => {
     if (!exists) {
       await Driver.create(driverData);
       created.drivers.push(driverData.email);
-      console.log(`Driver created: ${driverData.email}`);
+      console.log('Driver created:');
+      announce(driverData.email, driverPassword);
     }
   }
 

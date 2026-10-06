@@ -30,13 +30,31 @@ npm run dev
 
 ```bash
 cd backend
-npm run db:seed
+npm run seed:dev     # from TypeScript source
+npm run seed         # from a build, after npm run build
 ```
 
-Default credentials:
-- **Admin**: admin@fleet.com / admin123
-- **Dispatcher**: dispatcher@fleet.com / dispatch123
-- **Driver**: driver@fleet.com / driver123
+**There are no default passwords.** They used to be literals in `seed.ts`, which
+meant an administrator account whose password was in source control everywhere
+the seed had run. Each run now generates one per account and prints it once:
+
+```
+Accounts created by THIS run, with the passwords they were given:
+  admin@fleet.com / vMrGyDhqUQWRrhYBfXSf (generated - this is the only time it is shown)
+  ...
+```
+
+They are stored only as hashes, so save them as they appear. To choose them
+yourself, set `SEED_ADMIN_PASSWORD`, `SEED_DISPATCHER_PASSWORD` and
+`SEED_DRIVER_PASSWORD` before running.
+
+The seed is idempotent: an account that already exists keeps the password it
+was created with, and the run says so rather than printing one that would not
+work. A forgotten password is reset through the forgot-password flow.
+
+It refuses to run when `NODE_ENV=production` unless `ALLOW_PRODUCTION_SEED=yes`
+is also set - it writes demo drivers, vehicles and trips, which is not data a
+live fleet should acquire by accident.
 
 ### Web Dashboard
 
