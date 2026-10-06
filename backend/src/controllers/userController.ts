@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { User } from '../models';
-import { disconnectUserSockets } from '../utils/dashboardSockets';
+import { disconnectUserSockets } from '../socket';
 
 export const getAllUsers = async (req: Request, res: Response): Promise<void> => {
   try {

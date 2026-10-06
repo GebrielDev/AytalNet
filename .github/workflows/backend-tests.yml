@@ -1,0 +1,33 @@
+name: Backend tests
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # 22, not the engines floor of 18: the test script relies on the
+          # built-in runner expanding its own glob, which older majors do not.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      # The suite needs no database or secrets: it stubs the model methods it
+      # touches and src/config/* gets placeholders from tests/setupEnv.ts.
+      - run: npm run typecheck
+      - run: npm test

@@ -26,6 +26,18 @@ npm install
 npm run dev
 ```
 
+### Backend Tests
+
+```bash
+cd backend
+npm test        # Node's built-in test runner, via ts-node
+npm run typecheck   # type-checks src and tests together
+```
+
+Tests live in `backend/tests/` and need no database: they stand up the real
+socket and Express wiring and stub the model methods they touch, so `npm test`
+runs on a clean checkout with nothing but `npm install`.
+
 ### Seed Database
 
 ```bash
