@@ -176,16 +176,25 @@ describe('dashboard socket', () => {
       await settle();
     });
 
+    // The only test here gated on a wall-clock timer: everything else
+    // disconnects synchronously. A JWT's exp has one-second granularity, so the
+    // close lands up to a second after connecting - and when the whole suite
+    // runs in parallel on a contended machine the event loop can be busy well
+    // past that. The default 3s bound failed on the first run after `npm ci`,
+    // which is exactly the shape of CI.
+    //
+    // The bound exists only so a socket that never closes fails rather than
+    // hangs, so it can be generous without weakening the assertion.
     it('closes the socket when the token expires', async () => {
       const socket = await server.connect(DISPATCHER, { expiresIn: '1s' });
       const events = collect(socket, 'trip:started');
 
-      await waitForDisconnect(socket);
+      await waitForDisconnect(socket, 10_000);
 
       server.io.to('dashboard').emit('trip:started', { id: 1 });
       await settle();
       expect(events).toEqual([]);
-    });
+    }, 15_000);
   });
 
   describe('when a user is deleted', () => {
