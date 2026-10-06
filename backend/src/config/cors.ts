@@ -18,7 +18,14 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'https://driverapp.startechsolutions.us',
 ];
 
-const DEV_ORIGINS = ['http://localhost:5173', 'http://localhost:3000'];
+// 5180 is what web-dashboard/vite.config.ts actually binds, with
+// strictPort: true so it does not fall back. 5173 is Vite's default and is
+// kept for anyone running it unconfigured.
+const DEV_ORIGINS = [
+  'http://localhost:5180',
+  'http://localhost:5173',
+  'http://localhost:3000',
+];
 
 const normalise = (origin: string): string => origin.trim().replace(/\/+$/, '');
 

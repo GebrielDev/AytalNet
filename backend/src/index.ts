@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken';
 import { connectDatabase } from './config/database';
 import { authConfig, assertAuthSecrets } from './config/auth';
 import { allowedOrigins, isOriginAllowed } from './config/cors';
+import { User } from './models';
 import routes from './routes';
 import { ApiError, errorHandler, notFound } from './middleware/errorHandler';
 
@@ -27,16 +28,23 @@ const io = new Server(server, {
 // trip GPS. Without this, any client that completed the handshake received all
 // of it - which contradicts the privacy policy's claim that only dispatchers
 // and administrators can see trip data.
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   const token = socket.handshake.auth?.token;
   if (!token) {
     next(new Error('Authentication required'));
     return;
   }
   try {
-    const decoded = jwt.verify(token, authConfig.jwtSecret) as { type?: string };
+    const decoded = jwt.verify(token, authConfig.jwtSecret) as { id: number; type?: string };
     if (decoded.type !== 'user') {
       next(new Error('Dashboard access is limited to dispatchers and administrators'));
+      return;
+    }
+    // Matches authenticateToken: the signed claims are not enough on their own.
+    // A dispatcher deleted through deleteUser still holds a valid token until it
+    // expires, and without this would keep receiving the feed for up to an hour.
+    if (!(await User.findByPk(decoded.id))) {
+      next(new Error('User not found'));
       return;
     }
     next();
