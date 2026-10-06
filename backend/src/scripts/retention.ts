@@ -4,10 +4,12 @@ dotenv.config();
 import { Op } from 'sequelize';
 import { connectDatabase } from '../config/database';
 import { Trip, TripPhoto } from '../models';
+import cloudinary from '../config/cloudinary';
 import {
   retentionCutoff,
   anonymisedValues,
   parseRetentionArgs,
+  cloudinaryPublicId,
 } from './retentionPolicy';
 
 /**
@@ -39,27 +41,32 @@ const run = async () => {
 
   await connectDatabase();
 
-  // Already-anonymised trips have no driver link, so they are not picked up
-  // twice and the job is safe to re-run.
-  const due = await Trip.findAll({
-    where: {
-      startTime: { [Op.lte]: cutoff },
-      driverId: { [Op.ne]: null },
-    },
+  // The two steps are queried independently so each is retryable on its own.
+  // Scoping photographs to not-yet-anonymised trips would mean that a photo
+  // whose Cloudinary delete failed could never be retried: its trip would
+  // already have lost its driver link and would never be selected again.
+  const tripsDue = await Trip.findAll({
+    where: { startTime: { [Op.lte]: cutoff }, driverId: { [Op.ne]: null } },
     attributes: ['id'],
   });
-  const tripIds = due.map((t) => t.id);
+  const tripIds = tripsDue.map((t) => t.id);
 
-  const photoCount = tripIds.length
-    ? await TripPhoto.count({ where: { tripId: { [Op.in]: tripIds } } })
-    : 0;
+  const photosDue = await TripPhoto.findAll({
+    attributes: ['id', 'photoUrl'],
+    include: [{
+      model: Trip, as: 'trip', attributes: [], required: true,
+      where: { startTime: { [Op.lte]: cutoff } },
+    }],
+  });
+
+  const remoteAssets = photosDue.filter((p) => cloudinaryPublicId(p.photoUrl));
 
   console.log(`Retention window: ${years} year${years === 1 ? '' : 's'}`);
   console.log(`Cutoff:           ${cutoff.toISOString()} (trips starting on or before)`);
-  console.log(`Trips to anonymise: ${tripIds.length}`);
-  console.log(`Photographs to delete: ${photoCount}`);
+  console.log(`Trips to anonymise:     ${tripIds.length}`);
+  console.log(`Photographs to delete:  ${photosDue.length} (${remoteAssets.length} stored on Cloudinary)`);
 
-  if (!tripIds.length) {
+  if (!tripIds.length && !photosDue.length) {
     console.log('\nNothing is due. No changes made.');
     process.exit(0);
   }
@@ -67,40 +74,77 @@ const run = async () => {
   if (!commit) {
     console.log(
       '\nDRY RUN - nothing was changed.\n' +
-      'Re-run with --commit to delete those photographs and anonymise those\n' +
-      'trips. Both are irreversible.'
+      'Re-run with --commit to delete those photographs - from Cloudinary as\n' +
+      'well as the database - and anonymise those trips. Both are irreversible.'
     );
     process.exit(0);
   }
 
-  // One transaction: a half-applied run would leave photographs attached to
-  // trips that no longer name anyone, or the reverse.
-  //
+  // Cloudinary first, and outside the transaction: a remote delete cannot be
+  // rolled back, so the database row is the record that it still needs doing.
+  // A row is removed only once its image is actually gone.
+  const deletable: number[] = [];
+  let remoteDeleted = 0;
+  const remoteFailures: string[] = [];
+
+  for (const photo of photosDue) {
+    const publicId = cloudinaryPublicId(photo.photoUrl);
+    if (!publicId) {
+      // Nothing stored remotely - an inline data URI. The row is the only copy.
+      deletable.push(photo.id);
+      continue;
+    }
+    try {
+      const result = await cloudinary.uploader.destroy(publicId, { invalidate: true });
+      // 'not found' counts as done: the asset is gone either way.
+      if (result.result === 'ok' || result.result === 'not found') {
+        remoteDeleted += result.result === 'ok' ? 1 : 0;
+        deletable.push(photo.id);
+      } else {
+        remoteFailures.push(`${publicId}: ${result.result}`);
+      }
+    } catch (error) {
+      remoteFailures.push(`${publicId}: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
   // Chunked because the first run after seven years of operation clears the
   // whole backlog at once, and a single IN list holding every id is how that
   // query stops being acceptable.
   const CHUNK = 500;
   const sequelize = Trip.sequelize!;
-  let photosDeleted = 0;
+  let photosRemoved = 0;
   let tripsAnonymised = 0;
 
   await sequelize.transaction(async (transaction) => {
-    for (let i = 0; i < tripIds.length; i += CHUNK) {
-      const batch = tripIds.slice(i, i + CHUNK);
-      photosDeleted += await TripPhoto.destroy({
-        where: { tripId: { [Op.in]: batch } },
+    for (let i = 0; i < deletable.length; i += CHUNK) {
+      photosRemoved += await TripPhoto.destroy({
+        where: { id: { [Op.in]: deletable.slice(i, i + CHUNK) } },
         transaction,
       });
+    }
+    for (let i = 0; i < tripIds.length; i += CHUNK) {
       const [updated] = await Trip.update(anonymisedValues(), {
-        where: { id: { [Op.in]: batch } },
+        where: { id: { [Op.in]: tripIds.slice(i, i + CHUNK) } },
         transaction,
       });
       tripsAnonymised += updated;
     }
   });
 
-  console.log(`\nDeleted ${photosDeleted} photograph(s).`);
+  console.log(`\nDeleted ${remoteDeleted} Cloudinary asset(s).`);
+  console.log(`Removed ${photosRemoved} photograph record(s).`);
   console.log(`Anonymised ${tripsAnonymised} trip(s).`);
+
+  if (remoteFailures.length) {
+    console.error(
+      `\n${remoteFailures.length} Cloudinary asset(s) could not be deleted. Their\n` +
+      'records were kept so a later run retries them:'
+    );
+    for (const failure of remoteFailures.slice(0, 20)) console.error(`  ${failure}`);
+    if (remoteFailures.length > 20) console.error(`  ...and ${remoteFailures.length - 20} more`);
+    process.exit(1);
+  }
 
   console.log('Done.');
   process.exit(0);

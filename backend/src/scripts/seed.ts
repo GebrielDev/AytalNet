@@ -31,6 +31,12 @@ const seed = async () => {
 
   console.log('Seeding database...');
 
+  // Which accounts this run actually created. The seed is idempotent, so on a
+  // re-run an existing account keeps the password it was created with - and
+  // printing the freshly generated one as its credential would send whoever
+  // read the output off with a password that cannot work.
+  const created = { admin: false, dispatcher: false, drivers: [] as string[] };
+
   // Create admin user for dashboard
   const adminExists = await User.findOne({ where: { email: 'admin@fleet.com' } });
   if (!adminExists) {
@@ -40,6 +46,7 @@ const seed = async () => {
       name: 'Admin User',
       role: 'admin',
     });
+    created.admin = true;
     console.log('Admin user created: admin@fleet.com');
   }
 
@@ -52,6 +59,7 @@ const seed = async () => {
       name: 'Dispatcher User',
       role: 'dispatcher',
     });
+    created.dispatcher = true;
     console.log('Dispatcher created: dispatcher@fleet.com');
   }
 
@@ -68,6 +76,7 @@ const seed = async () => {
     const exists = await Driver.findOne({ where: { email: driverData.email } });
     if (!exists) {
       await Driver.create(driverData);
+      created.drivers.push(driverData.email);
       console.log(`Driver created: ${driverData.email}`);
     }
   }
@@ -236,17 +245,50 @@ const seed = async () => {
     p.fromEnv ? '(from the environment)' : '(generated - this is the only time it is shown)';
 
   console.log('\n=== Seeding Complete ===');
-  console.log('\nDashboard Login:');
-  console.log(`  admin@fleet.com / ${adminPassword.value} ${note(adminPassword)}`);
-  console.log(`  dispatcher@fleet.com / ${dispatcherPassword.value} ${note(dispatcherPassword)}`);
-  console.log(`\nDriver App Login (all five drivers share one password):`);
-  console.log(`  ${driverPassword.value} ${note(driverPassword)}`);
-  console.log('  john@fleet.com, maria@fleet.com, james@fleet.com, sarah@fleet.com, michael@fleet.com');
-  console.log(
-    '\nThese are stored only as hashes. Save them now, or reset them through\n' +
-    'the forgot-password flow. To choose them yourself, set SEED_ADMIN_PASSWORD,\n' +
-    'SEED_DISPATCHER_PASSWORD and SEED_DRIVER_PASSWORD before running.'
-  );
+
+  const anythingCreated = created.admin || created.dispatcher || created.drivers.length > 0;
+
+  if (!anythingCreated) {
+    console.log(
+      '\nEvery account already existed, so none was changed and no password\n' +
+      'was set. The credentials they were created with still apply; this run\n' +
+      'generated nothing you can use. Reset a forgotten one through the\n' +
+      'forgot-password flow.'
+    );
+  } else {
+    console.log('\nAccounts created by THIS run, with the passwords they were given:');
+
+    if (created.admin) {
+      console.log(`  admin@fleet.com / ${adminPassword.value} ${note(adminPassword)}`);
+    }
+    if (created.dispatcher) {
+      console.log(`  dispatcher@fleet.com / ${dispatcherPassword.value} ${note(dispatcherPassword)}`);
+    }
+    if (created.drivers.length) {
+      console.log(`\n  Driver app, password ${driverPassword.value} ${note(driverPassword)}:`);
+      console.log(`    ${created.drivers.join(', ')}`);
+    }
+
+    console.log(
+      '\nThese are stored only as hashes. Save them now. To choose them\n' +
+      'yourself, set SEED_ADMIN_PASSWORD, SEED_DISPATCHER_PASSWORD and\n' +
+      'SEED_DRIVER_PASSWORD before running.'
+    );
+
+    const skipped = [
+      !created.admin ? 'admin@fleet.com' : null,
+      !created.dispatcher ? 'dispatcher@fleet.com' : null,
+      created.drivers.length === 0 ? 'all drivers' : null,
+    ].filter(Boolean);
+
+    if (skipped.length) {
+      console.log(
+        `\nAlready existed and were left untouched (their old passwords still\n` +
+        `apply, not the ones above): ${skipped.join(', ')}`
+      );
+    }
+  }
+
   
   process.exit(0);
 };

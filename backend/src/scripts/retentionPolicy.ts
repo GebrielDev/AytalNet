@@ -92,3 +92,40 @@ export const parseRetentionArgs = (argv: string[]): RetentionArgs => {
     years: years ? Number(years.split('=')[1]) : RETENTION_YEARS,
   };
 };
+
+/**
+ * The Cloudinary public_id behind a stored photo URL, or null when the URL is
+ * not a Cloudinary asset.
+ *
+ * Photos go to Cloudinary and only the secure_url is kept, so deleting the
+ * trip_photos row removes the only record of where the image lives while the
+ * image itself stays public. The policy says photographs are deleted, so the
+ * remote object has to go too - and the id has to be recovered from the URL,
+ * since nothing stored it.
+ *
+ * A Cloudinary delivery URL looks like:
+ *   https://res.cloudinary.com/<cloud>/image/upload/v1699999999/folder/name.jpg
+ * everything after the version segment, minus the extension, is the public_id.
+ * Transformation segments may sit between `upload` and the version.
+ *
+ * photo_url was widened to TEXT to allow base64 data URIs, so some rows are not
+ * Cloudinary URLs at all; those return null and have nothing remote to delete.
+ */
+export const cloudinaryPublicId = (photoUrl: string): string | null => {
+  if (!/^https?:\/\/res\.cloudinary\.com\//.test(photoUrl)) return null;
+
+  const path = photoUrl.split('?')[0];
+  const afterUpload = path.split('/upload/')[1];
+  if (!afterUpload) return null;
+
+  const segments = afterUpload.split('/');
+  // Drop the version segment (v1699999999) and anything before it, which is
+  // where transformations appear.
+  const versionAt = segments.findIndex((s) => /^v\d+$/.test(s));
+  const idSegments = versionAt >= 0 ? segments.slice(versionAt + 1) : segments;
+  if (!idSegments.length) return null;
+
+  const joined = idSegments.join('/');
+  const withoutExtension = joined.replace(/\.[a-zA-Z0-9]+$/, '');
+  return withoutExtension || null;
+};

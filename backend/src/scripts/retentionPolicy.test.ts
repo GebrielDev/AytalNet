@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  cloudinaryPublicId,
   RETENTION_YEARS,
   retentionCutoff,
   anonymisedValues,
@@ -65,5 +66,39 @@ describe('anonymisedValues', () => {
 
   it('clears exactly the declared set, nothing more', () => {
     expect(Object.keys(anonymisedValues()).sort()).toEqual([...ANONYMISED_FIELDS].sort());
+  });
+});
+
+describe('cloudinaryPublicId', () => {
+  it('reads the id out of a plain delivery URL', () => {
+    expect(cloudinaryPublicId(
+      'https://res.cloudinary.com/demo/image/upload/v1699999999/fleet-management/trips/abc123.jpg'
+    )).toBe('fleet-management/trips/abc123');
+  });
+
+  it('ignores transformation segments', () => {
+    expect(cloudinaryPublicId(
+      'https://res.cloudinary.com/demo/image/upload/c_limit,w_1200/q_auto/v1699999999/fleet-management/trips/abc123.webp'
+    )).toBe('fleet-management/trips/abc123');
+  });
+
+  it('ignores a query string', () => {
+    expect(cloudinaryPublicId(
+      'https://res.cloudinary.com/demo/image/upload/v1/fleet-management/trips/a.png?_a=xyz'
+    )).toBe('fleet-management/trips/a');
+  });
+
+  // photo_url was widened to TEXT for base64 data URIs; those have no remote
+  // object, and must not be mistaken for one.
+  it('returns null for things that are not Cloudinary assets', () => {
+    for (const url of [
+      'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
+      'https://example.com/image.jpg',
+      'https://res.cloudinary.com/demo/image/fetch/http://x/y.jpg',
+      '',
+      'not a url',
+    ]) {
+      expect(cloudinaryPublicId(url)).toBeNull();
+    }
   });
 });
