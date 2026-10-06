@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { User } from '../models';
+import { disconnectUserSockets } from '../socket';
 
 export const getAllUsers = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -124,7 +125,16 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    const userId = user.id;
     await user.destroy();
+
+    // The socket handshake only authenticates once, so a deleted dispatcher's
+    // already-open dashboard connection would keep streaming driver names,
+    // employee IDs, vehicle plates and trip GPS until their token expired - up
+    // to an hour. Severing it here makes revocation take effect at once, the
+    // same way the REST path already rejects them on their next request.
+    disconnectUserSockets(req.app.get('io'), userId);
+
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
     console.error('Delete user error:', error);

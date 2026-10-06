@@ -26,6 +26,20 @@ npm install
 npm run dev
 ```
 
+### Backend Tests
+
+```bash
+cd backend
+npm test            # Vitest, once
+npm run test:watch  # Vitest, watching
+npm run typecheck   # type-checks src and the test files together
+```
+
+Tests sit beside the code they cover as `src/**/*.test.ts`, and need no
+database: they mock the models and the auth config, so `npm test` runs on a
+clean checkout with nothing but `npm install`. The same commands run in CI
+(`.github/workflows/ci.yml`).
+
 ### Seed Database
 
 ```bash
