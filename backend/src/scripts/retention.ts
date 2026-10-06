@@ -3,19 +3,23 @@ dotenv.config();
 
 import { Op } from 'sequelize';
 import { connectDatabase } from '../config/database';
-import { Trip, TripPhoto } from '../models';
+import { Trip, TripPhoto, Driver } from '../models';
 import cloudinary from '../config/cloudinary';
 import {
   retentionCutoff,
   anonymisedValues,
   parseRetentionArgs,
   cloudinaryPublicId,
+  anonymisedDriverValues,
 } from './retentionPolicy';
 
 /**
- * Applies the retention rule the privacy policy publishes: seven years on,
- * photographs are deleted and trip records are anonymised, while mileage,
- * dates and vehicle survive for fleet reporting.
+ * Applies the retention rules the privacy policy publishes:
+ *
+ *  - seven years on, photographs are deleted and trip records anonymised,
+ *    while mileage, dates and vehicle survive for fleet reporting;
+ *  - account records are kept "for as long as you drive for us and for seven
+ *    years afterwards", so a driver inactive for seven years is anonymised too.
  *
  * Nothing ran this before, so the promise was on the website only.
  *
@@ -61,12 +65,44 @@ const run = async () => {
 
   const remoteAssets = photosDue.filter((p) => cloudinaryPublicId(p.photoUrl));
 
+  // Account records, the other half of the policy. deactivatedAt is set by the
+  // Driver model's hook when a driver is made inactive; rows that went
+  // inactive before that column existed carry NULL, and there is no honest way
+  // to infer when they left - so they are reported, never guessed at.
+  const driversDue = await Driver.findAll({
+    where: {
+      status: 'inactive',
+      deactivatedAt: { [Op.ne]: null, [Op.lte]: cutoff },
+      // Already-anonymised rows carry a placeholder employee id.
+      employeeId: { [Op.notLike]: 'ANON-%' },
+    },
+    attributes: ['id'],
+  });
+
+  const undatedInactive = await Driver.count({
+    where: {
+      status: 'inactive',
+      deactivatedAt: null as unknown as Date,
+      employeeId: { [Op.notLike]: 'ANON-%' },
+    },
+  });
+
   console.log(`Retention window: ${years} year${years === 1 ? '' : 's'}`);
   console.log(`Cutoff:           ${cutoff.toISOString()} (trips starting on or before)`);
   console.log(`Trips to anonymise:     ${tripIds.length}`);
   console.log(`Photographs to delete:  ${photosDue.length} (${remoteAssets.length} stored on Cloudinary)`);
+  console.log(`Driver accounts to anonymise: ${driversDue.length}`);
 
-  if (!tripIds.length && !photosDue.length) {
+  if (undatedInactive > 0) {
+    console.warn(
+      `\n${undatedInactive} inactive driver account(s) have no deactivation date, so\n` +
+      'their seven years cannot be counted and they are NOT touched. They went\n' +
+      'inactive before that was recorded. Set drivers.deactivated_at for them to\n' +
+      'bring them under the policy; leaving it null keeps them indefinitely.'
+    );
+  }
+
+  if (!tripIds.length && !photosDue.length && !driversDue.length) {
     console.log('\nNothing is due. No changes made.');
     process.exit(0);
   }
@@ -115,6 +151,7 @@ const run = async () => {
   const sequelize = Trip.sequelize!;
   let photosRemoved = 0;
   let tripsAnonymised = 0;
+  let driversAnonymised = 0;
 
   await sequelize.transaction(async (transaction) => {
     for (let i = 0; i < deletable.length; i += CHUNK) {
@@ -130,11 +167,26 @@ const run = async () => {
       });
       tripsAnonymised += updated;
     }
+
+    // One statement each: employeeId and email are unique, so the replacement
+    // values have to be derived per row.
+    for (const driver of driversDue) {
+      const [updated] = await Driver.update(anonymisedDriverValues(driver.id), {
+        where: { id: driver.id },
+        transaction,
+        // The model's beforeUpdate hook would bcrypt the placeholder into a
+        // real, if unguessable, hash, and would also clear deactivatedAt. The
+        // stored value must stay something no password can produce.
+        hooks: false,
+      });
+      driversAnonymised += updated;
+    }
   });
 
   console.log(`\nDeleted ${remoteDeleted} Cloudinary asset(s).`);
   console.log(`Removed ${photosRemoved} photograph record(s).`);
   console.log(`Anonymised ${tripsAnonymised} trip(s).`);
+  console.log(`Anonymised ${driversAnonymised} driver account(s).`);
 
   if (remoteFailures.length) {
     console.error(

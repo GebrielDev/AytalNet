@@ -122,3 +122,63 @@ describe('createTokenRefresher', () => {
     expect(clearTokens).toHaveBeenCalled();
   });
 });
+
+describe('a session that ends while a refresh is in flight', () => {
+  // logout() removes the stored tokens. A refresh that was already in flight
+  // would then write the old pair back, and the next reload would sign the
+  // user in again - after they explicitly signed out.
+  it('does not restore credentials that logout removed', async () => {
+    let stored: string | null = 'stored-refresh';
+    let resolveRequest: (p: TokenPair) => void = () => {};
+    const saveTokens = vi.fn();
+    const clearTokens = vi.fn();
+
+    const refresher = createTokenRefresher({
+      getRefreshToken: () => stored,
+      requestNewTokens: () => new Promise<TokenPair>((r) => { resolveRequest = r; }),
+      saveTokens,
+      clearTokens,
+      isTerminal: () => true,
+    });
+
+    const pending = refresher.refresh();
+    stored = null;              // logout lands mid-flight
+    resolveRequest(pair(1));
+
+    await expect(pending).resolves.toEqual({ status: 'superseded' });
+    expect(saveTokens).not.toHaveBeenCalled();
+    expect(clearTokens).not.toHaveBeenCalled();
+  });
+
+  // Worse than a stale write: the old session's pair would land on top of the
+  // account that just signed in, while the UI shows the new one.
+  it('does not overwrite a different account that signed in meanwhile', async () => {
+    let stored: string | null = 'old-account-refresh';
+    let resolveRequest: (p: TokenPair) => void = () => {};
+    const saveTokens = vi.fn();
+
+    const refresher = createTokenRefresher({
+      getRefreshToken: () => stored,
+      requestNewTokens: () => new Promise<TokenPair>((r) => { resolveRequest = r; }),
+      saveTokens,
+      clearTokens: vi.fn(),
+      isTerminal: () => true,
+    });
+
+    const pending = refresher.refresh();
+    stored = 'new-account-refresh';
+    resolveRequest(pair(1));
+
+    await expect(pending).resolves.toEqual({ status: 'superseded' });
+    expect(saveTokens).not.toHaveBeenCalled();
+    expect(stored).toBe('new-account-refresh');
+  });
+
+  it('still saves when the stored token is unchanged', async () => {
+    const { refresher, saveTokens } = setup();
+    await expect(refresher.refresh()).resolves.toEqual({
+      status: 'refreshed', accessToken: 'access-1',
+    });
+    expect(saveTokens).toHaveBeenCalledWith(pair(1));
+  });
+});

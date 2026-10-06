@@ -30,11 +30,16 @@ export interface TokenPair {
  *                 timeout. The refresh token may be perfectly good, so the
  *                 credentials are KEPT and the caller surfaces an error rather
  *                 than signing the user out over a flaky minute.
+ * 'superseded'  - the session this was refreshing is no longer the stored one:
+ *                 a logout, or another account signing in, landed while the
+ *                 exchange was in flight. Nothing is written and nothing is
+ *                 cleared; the result simply belongs to a session that is over.
  */
 export type RefreshResult =
   | { status: 'refreshed'; accessToken: string }
   | { status: 'expired' }
-  | { status: 'unavailable' };
+  | { status: 'unavailable' }
+  | { status: 'superseded' };
 
 export interface RefresherOptions {
   /** The stored refresh token, or null when there is none to use. */
@@ -72,6 +77,16 @@ export const createTokenRefresher = (options: RefresherOptions): Refresher => {
 
       try {
         const pair = await options.requestNewTokens(refreshToken);
+
+        // A refresh takes a round trip, and anything can happen during it.
+        // If logout cleared the credentials, writing this pair would put the
+        // old session back and a reload would sign the user in again; if a
+        // different account signed in, writing it would overwrite their
+        // credentials while the UI showed them as the current user.
+        if (options.getRefreshToken() !== refreshToken) {
+          return { status: 'superseded' };
+        }
+
         options.saveTokens(pair);
         return { status: 'refreshed', accessToken: pair.accessToken };
       } catch (error) {

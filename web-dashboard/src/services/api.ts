@@ -87,9 +87,11 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (result.status === 'unavailable') {
-      // Credentials kept: the server never gave a verdict. The request fails
-      // and the page reports it, which beats a sign-out over a flaky minute.
+    if (result.status !== 'refreshed') {
+      // 'unavailable': the server never gave a verdict, so the credentials
+      // stay and the page reports the failure rather than signing anyone out.
+      // 'superseded': this belongs to a session that ended mid-flight; there
+      // is nothing to write and nothing to clear.
       return Promise.reject(error);
     }
 

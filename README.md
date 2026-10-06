@@ -121,6 +121,13 @@ To enforce the policy, add a Railway cron service:
    the window is seven years, so daily buys nothing)
 4. Give it the same `DATABASE_URL` and `CLOUDINARY_*` variables as the backend
 
+It covers both halves of the policy: trips and their photographs at seven
+years, and driver account records seven years after the driver stops driving.
+The clock for an account starts when its status moves to inactive, which is
+recorded from now on. **Drivers already inactive have no such date**, so their
+seven years cannot be counted and the job reports them without touching them -
+set `drivers.deactivated_at` for those rows to bring them under the policy.
+
 Run it without `--commit` once first and read what it reports. The job exits
 non-zero if any Cloudinary asset could not be deleted, keeping those records so
 the next run retries them.

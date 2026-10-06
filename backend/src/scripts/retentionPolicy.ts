@@ -129,3 +129,32 @@ export const cloudinaryPublicId = (photoUrl: string): string | null => {
   const withoutExtension = joined.replace(/\.[a-zA-Z0-9]+$/, '');
   return withoutExtension || null;
 };
+
+/**
+ * What an anonymised driver account keeps and what it loses.
+ *
+ * The privacy policy keeps account records "for as long as you drive for us
+ * and for seven years afterwards". Nothing implemented that half either: a
+ * driver set to inactive kept their name, email, phone, licence number and
+ * password hash indefinitely.
+ *
+ * The row is anonymised rather than deleted, because trips reference it and a
+ * trip whose own seven years are not yet up still needs a driver_id to point
+ * at. employeeId and email are NOT NULL and unique, so they take unique
+ * placeholders rather than null.
+ *
+ * The password hash is replaced with a value no password can produce, so the
+ * account cannot be signed into even if the email were guessed.
+ */
+export const anonymisedDriverValues = (id: number): Record<string, string> => ({
+  employeeId: `ANON-${id}`,
+  name: 'Former driver',
+  // .invalid is reserved by RFC 2606 and can never resolve, and the domain
+  // needs a dot: the model validates this column with isEmail, which rejects a
+  // bare `user@invalid`.
+  email: `anonymised-${id}@anonymised.invalid`,
+  phone: '',
+  licenseNumber: '',
+  // bcrypt hashes start with $2; this cannot be one, so compare always fails.
+  passwordHash: 'anonymised-no-login',
+});

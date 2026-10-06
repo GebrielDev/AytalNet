@@ -13,11 +13,16 @@ interface DriverAttributes {
   licenseNumber: string;
   assignedVehicleId: number | null;
   status: 'active' | 'inactive';
+  // When this driver stopped driving. The privacy policy keeps account records
+  // "for as long as you drive for us and for seven years afterwards", and
+  // without a date there is nothing to count seven years from. Set by the hook
+  // below whenever status moves to inactive, cleared on reinstatement.
+  deactivatedAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface DriverCreationAttributes extends Optional<DriverAttributes, 'id' | 'status' | 'assignedVehicleId' | 'createdAt' | 'updatedAt'> {}
+interface DriverCreationAttributes extends Optional<DriverAttributes, 'id' | 'status' | 'assignedVehicleId' | 'deactivatedAt' | 'createdAt' | 'updatedAt'> {}
 
 class Driver extends Model<DriverAttributes, DriverCreationAttributes> implements DriverAttributes {
   public id!: number;
@@ -29,6 +34,7 @@ class Driver extends Model<DriverAttributes, DriverCreationAttributes> implement
   public licenseNumber!: string;
   public assignedVehicleId!: number | null;
   public status!: 'active' | 'inactive';
+  public deactivatedAt!: Date | null;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 
@@ -93,6 +99,12 @@ Driver.init(
       allowNull: false,
       defaultValue: 'active',
     },
+    deactivatedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+      field: 'deactivated_at',
+    },
   },
   {
     sequelize,
@@ -105,6 +117,14 @@ Driver.init(
       beforeUpdate: async (driver) => {
         if (driver.changed('passwordHash')) {
           driver.passwordHash = await Driver.hashPassword(driver.passwordHash);
+        }
+
+        // The seven years the privacy policy promises are counted from here.
+        // Nothing recorded when a driver stopped driving, so account records
+        // had no expiry at all - name, email, phone, licence number and
+        // password hash simply stayed.
+        if (driver.changed('status')) {
+          driver.deactivatedAt = driver.status === 'inactive' ? new Date() : null;
         }
       },
     },

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  anonymisedDriverValues,
   cloudinaryPublicId,
   RETENTION_YEARS,
   retentionCutoff,
@@ -100,5 +101,51 @@ describe('cloudinaryPublicId', () => {
     ]) {
       expect(cloudinaryPublicId(url)).toBeNull();
     }
+  });
+});
+
+describe('anonymisedDriverValues', () => {
+  it('replaces every identifying field', () => {
+    const values = anonymisedDriverValues(42);
+
+    expect(values.name).toBe('Former driver');
+    expect(values.email).toBe('anonymised-42@anonymised.invalid');
+    expect(values.phone).toBe('');
+    expect(values.licenseNumber).toBe('');
+  });
+
+  // employeeId and email are NOT NULL and unique, so two anonymised drivers
+  // must not collide - and nulling them is not an option.
+  it('keeps the unique columns unique and non-null', () => {
+    const a = anonymisedDriverValues(1);
+    const b = anonymisedDriverValues(2);
+
+    expect(a.employeeId).not.toBe(b.employeeId);
+    expect(a.email).not.toBe(b.email);
+    for (const v of [a.employeeId, a.email]) {
+      expect(typeof v).toBe('string');
+      expect(v.length).toBeGreaterThan(0);
+    }
+  });
+
+  // The address must not be deliverable - an anonymised record should not be
+  // able to receive a password-reset link - and it must still satisfy the
+  // column's isEmail validation, which rejects a domain with no dot. The first
+  // attempt here used `user@invalid` and the update failed against a real
+  // database with "Validation isEmail on email failed".
+  it('uses a reserved TLD that cannot receive mail, and still parses as an address', () => {
+    const email = anonymisedDriverValues(7).email;
+    const [local, domain] = email.split('@');
+
+    expect(domain.endsWith('.invalid')).toBe(true);
+    expect(domain).toContain('.');
+    expect(local.length).toBeGreaterThan(0);
+    expect(email.split('@')).toHaveLength(2);
+  });
+
+  // bcrypt hashes begin with $2. Anything that cannot be one makes every
+  // comparison fail, so the account cannot be signed into.
+  it('leaves a password hash no password can match', () => {
+    expect(anonymisedDriverValues(7).passwordHash.startsWith('$2')).toBe(false);
   });
 });
