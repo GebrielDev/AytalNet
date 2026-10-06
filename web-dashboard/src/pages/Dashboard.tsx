@@ -176,9 +176,16 @@ export default function Dashboard() {
       );
     });
 
-    socket.on('trip:ended', (trip: { id: number }) => {
+    // Both take a trip off the board. cancelTrip emits { id } and endTrip emits
+    // the trip row, so only the id is read from either. trip:cancelled was
+    // emitted by the backend but listened for nowhere, which left a dispatcher
+    // who cancelled a trip from the Trips page still looking at it under
+    // "Active Trips" here - and counted in the total - until a reload.
+    const removeTrip = (trip: { id: number }) =>
       applyTripOp((prev) => prev.filter((t) => t.id !== trip.id));
-    });
+
+    socket.on('trip:ended', removeTrip);
+    socket.on('trip:cancelled', removeTrip);
 
     // socket.active distinguishes "socket.io is still retrying" from "it has
     // given up", which is the difference between a blip and a dead feed.
