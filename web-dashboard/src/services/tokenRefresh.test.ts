@@ -182,3 +182,38 @@ describe('a session that ends while a refresh is in flight', () => {
     expect(saveTokens).toHaveBeenCalledWith(pair(1));
   });
 });
+
+describe('a terminal rejection that arrives after the session changed', () => {
+  // The equality guard originally covered only the success path. A rejection
+  // says the token THIS call exchanged is dead; it says nothing about whoever
+  // is signed in now. Clearing on it signed out the new account.
+  it('does not clear credentials belonging to an account that signed in meanwhile', async () => {
+    let stored: string | null = 'old-account-refresh';
+    let rejectRequest: (e: unknown) => void = () => {};
+    const clearTokens = vi.fn();
+
+    const refresher = createTokenRefresher({
+      getRefreshToken: () => stored,
+      requestNewTokens: () => new Promise<TokenPair>((_, reject) => { rejectRequest = reject; }),
+      saveTokens: vi.fn(),
+      clearTokens,
+      isTerminal: () => true,
+    });
+
+    const pending = refresher.refresh();
+    stored = 'new-account-refresh';          // another account signs in
+    rejectRequest({ response: { status: 401 } });
+
+    await expect(pending).resolves.toEqual({ status: 'superseded' });
+    expect(clearTokens).not.toHaveBeenCalled();
+    expect(stored).toBe('new-account-refresh');
+  });
+
+  it('still clears when the rejected token is the one still stored', async () => {
+    const requestNewTokens = vi.fn().mockRejectedValue({ response: { status: 401 } });
+    const { refresher, clearTokens } = setup({ requestNewTokens });
+
+    await expect(refresher.refresh()).resolves.toEqual({ status: 'expired' });
+    expect(clearTokens).toHaveBeenCalled();
+  });
+});

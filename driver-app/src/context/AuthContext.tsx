@@ -68,8 +68,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await AsyncStorage.removeItem('accessToken');
-    await AsyncStorage.removeItem('refreshToken');
+    // One call, not two awaits. Removing accessToken first left a window in
+    // which refreshToken was still stored: a refresh completing inside it saw
+    // its own token still there, passed the equality check and wrote BOTH
+    // credentials back. Logout then removed only the refresh token, leaving a
+    // freshly minted access token for checkAuth to accept on the next launch -
+    // signing the driver back in after they signed out.
+    await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
     setDriver(null);
   };
 

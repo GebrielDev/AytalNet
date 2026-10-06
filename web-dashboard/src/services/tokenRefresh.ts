@@ -96,6 +96,16 @@ export const createTokenRefresher = (options: RefresherOptions): Refresher => {
           // very likely still valid.
           return { status: 'unavailable' };
         }
+
+        // The same check as the success path, and for the same reason. A
+        // rejection says the token THIS call exchanged is dead - it says
+        // nothing about whoever is signed in now. Clearing unconditionally
+        // would sign out an account that logged in while this was in flight,
+        // on the strength of the previous session's 401.
+        if (options.getRefreshToken() !== refreshToken) {
+          return { status: 'superseded' };
+        }
+
         options.clearTokens();
         return { status: 'expired' };
       }

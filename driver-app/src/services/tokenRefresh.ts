@@ -101,6 +101,14 @@ export const createTokenRefresher = (options: RefresherOptions): Refresher => {
           // very likely still valid.
           return { status: 'unavailable' };
         }
+
+        // The same check as the success path, and for the same reason. A
+        // rejection says the token THIS call exchanged is dead - it says
+        // nothing about whoever is signed in now.
+        if ((await options.getRefreshToken()) !== refreshToken) {
+          return { status: 'superseded' };
+        }
+
         await options.clearTokens();
         return { status: 'expired' };
       }
