@@ -73,7 +73,22 @@ export const getSummaryStats = async (req: Request, res: Response): Promise<void
       Trip.count({ where: { startTime: { [Op.gte]: monthAgo } } }),
     ]);
 
-    res.json({ totalDrivers, activeDrivers, totalVehicles, activeVehicles, activeTrips, todayTrips, weekTrips, monthTrips });
+    // The dashboard's stat cards open a list of the trips behind each number,
+    // and that list has to be the same set the count came from. If the browser
+    // derived these boundaries itself it would use its own timezone, while
+    // these are the server's - so a dispatcher in Phoenix would see a count of
+    // 12 above a list of 9. Returning them means the drill-down filters on the
+    // exact instant that was counted.
+    //
+    // Note the windows are rolling, not calendar: week is the last 7 days and
+    // month the last month, both from midnight today.
+    const ranges = {
+      today: today.toISOString(),
+      week: weekAgo.toISOString(),
+      month: monthAgo.toISOString(),
+    };
+
+    res.json({ totalDrivers, activeDrivers, totalVehicles, activeVehicles, activeTrips, todayTrips, weekTrips, monthTrips, ranges });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch summary' });
   }
