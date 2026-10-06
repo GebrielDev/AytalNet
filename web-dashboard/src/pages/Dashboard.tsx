@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { tripsApi, reportsApi } from '../services/api';
 
@@ -60,13 +60,39 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [feed, setFeed] = useState<FeedState>('connecting');
 
+  // A fetch and the socket both write activeTrips, and the fetch is not
+  // instant. A trip:ended that lands while a refetch is in flight is NEWER than
+  // the snapshot that refetch is about to return, so assigning the snapshot
+  // would put the ended trip back on the board - and no later event would ever
+  // correct it. Each socket update is therefore recorded as an operation and
+  // replayed on top of whatever snapshot arrives after it.
+  const opLog = useRef<{ seq: number; apply: (list: ActiveTrip[]) => ActiveTrip[] }[]>([]);
+  const opSeq = useRef(0);
+  // Two fetches can overlap (Retry pressed during a reconnect refetch). Only
+  // the newest may write, or an older response could land last and win.
+  const fetchGen = useRef(0);
+
+  const applyTripOp = useCallback((apply: (list: ActiveTrip[]) => ActiveTrip[]) => {
+    opSeq.current += 1;
+    opLog.current.push({ seq: opSeq.current, apply });
+    // Only ops newer than an in-flight fetch are ever replayed; the rest are
+    // dead weight.
+    if (opLog.current.length > 50) opLog.current.splice(0, opLog.current.length - 50);
+    setActiveTrips(apply);
+  }, []);
+
   const fetchData = useCallback(async () => {
+    const gen = (fetchGen.current += 1);
+    const seqAtStart = opSeq.current;
+
     // allSettled, not all: a failing summary used to discard a perfectly good
     // list of active trips along with it.
     const [statsRes, tripsRes] = await Promise.allSettled([
       reportsApi.getSummary(),
       tripsApi.getActive(),
     ]);
+
+    if (gen !== fetchGen.current) return;
 
     if (statsRes.status === 'fulfilled') {
       setStats(statsRes.value.data);
@@ -77,10 +103,18 @@ export default function Dashboard() {
     }
 
     if (tripsRes.status === 'fulfilled') {
-      setActiveTrips(tripsRes.value.data);
+      const snapshot = tripsRes.value.data as ActiveTrip[];
+      setActiveTrips(
+        opLog.current
+          .filter((op) => op.seq > seqAtStart)
+          .reduce((list, op) => op.apply(list), snapshot)
+      );
       setTripsFailed(false);
     } else {
       console.error('Failed to fetch active trips', tripsRes.reason);
+      // The rows already on screen are kept rather than blanked - the last
+      // known board beats no board - but they are now labelled as last known
+      // rather than current, because a trip may have ended since.
       setTripsFailed(true);
     }
   }, []);
@@ -126,13 +160,13 @@ export default function Dashboard() {
       // A reconnect refetches, so the same trip can arrive twice - once in the
       // fetch, once from an event still in flight. Two rows with the same React
       // key is a rendering bug, and the count would be wrong too.
-      setActiveTrips((prev) =>
+      applyTripOp((prev) =>
         prev.some((t) => t.id === trip.id) ? prev : [trip, ...prev]
       );
     });
 
     socket.on('trip:ended', (trip: { id: number }) => {
-      setActiveTrips((prev) => prev.filter((t) => t.id !== trip.id));
+      applyTripOp((prev) => prev.filter((t) => t.id !== trip.id));
     });
 
     // socket.active distinguishes "socket.io is still retrying" from "it has
@@ -147,7 +181,7 @@ export default function Dashboard() {
       cancelled = true;
       socket.disconnect();
     };
-  }, [fetchData]);
+  }, [fetchData, applyTripOp]);
 
   if (loading) {
     return (
@@ -244,11 +278,23 @@ export default function Dashboard() {
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Active Trips</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {tripsFailed
-                ? 'Count unavailable'
-                : `${activeTrips.length} trip${activeTrips.length !== 1 ? 's' : ''} in progress`}
+            <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+              Active Trips
+              {tripsFailed && activeTrips.length > 0 && (
+                <span className="text-[11px] font-medium uppercase tracking-wide bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                  Stale
+                </span>
+              )}
+            </h2>
+            {/* Rows retained from before a failed refresh are not current: a
+                trip may have ended since. Saying so beats both blanking them
+                and presenting them as live. */}
+            <p className={`text-xs mt-0.5 ${tripsFailed ? 'text-amber-700' : 'text-gray-500'}`}>
+              {!tripsFailed
+                ? `${activeTrips.length} trip${activeTrips.length !== 1 ? 's' : ''} in progress`
+                : activeTrips.length > 0
+                ? `Last known ${activeTrips.length} trip${activeTrips.length !== 1 ? 's' : ''} - not current`
+                : 'Count unavailable'}
             </p>
           </div>
           {/* This pinged green whatever the socket was doing, so it reassured
@@ -351,7 +397,13 @@ export default function Dashboard() {
                       <p className="text-xs text-gray-500">{trip.driver?.employeeId}</p>
                     </div>
                   </div>
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Active</span>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      tripsFailed ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-700'
+                    }`}
+                  >
+                    {tripsFailed ? 'Last known' : 'Active'}
+                  </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
                   <div><span className="font-medium text-gray-700">Vehicle:</span> {trip.vehicle?.plateNumber}</div>
