@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authApi } from '../services/api';
+import { authApi, setOnSessionEnded } from '../services/api';
 
 interface Driver {
   id: number;
@@ -25,6 +25,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     checkAuth();
+  }, []);
+
+  // The interceptor ends a session from outside React when the server rejects
+  // the refresh token or the account is gone. Without this the navigator would
+  // keep showing the authenticated stack, because it reads this value and
+  // nothing else, and every screen on it would fail silently until a restart.
+  useEffect(() => {
+    setOnSessionEnded(() => setDriver(null));
+    return () => setOnSessionEnded(null);
   }, []);
 
   const checkAuth = async () => {

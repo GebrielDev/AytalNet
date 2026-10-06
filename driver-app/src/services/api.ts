@@ -18,6 +18,31 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+/**
+ * Called when the session has ended for good: the server rejected the refresh
+ * token, or a retried request still 401d because the account is gone.
+ *
+ * Clearing AsyncStorage is not enough on its own. AppNavigator chooses the
+ * authenticated stack from AuthContext's in-memory `driver`, so a deactivated
+ * driver would stay on the protected screens with every action failing until
+ * they restarted the app. The dashboard gets this for free because it ends a
+ * session with window.location.href, which reloads and resets state; there is
+ * no equivalent here.
+ *
+ * AuthProvider registers a handler on mount.
+ */
+type SessionEndedHandler = () => void;
+let onSessionEnded: SessionEndedHandler | null = null;
+
+export const setOnSessionEnded = (handler: SessionEndedHandler | null): void => {
+  onSessionEnded = handler;
+};
+
+const endSession = async (): Promise<void> => {
+  await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
+  onSessionEnded?.();
+};
+
 const refresher = createTokenRefresher({
   getRefreshToken: () => AsyncStorage.getItem('refreshToken'),
   // A bare axios call, not `api`: going through the instance would attach the
@@ -32,9 +57,7 @@ const refresher = createTokenRefresher({
       ['refreshToken', refreshToken],
     ]);
   },
-  clearTokens: async () => {
-    await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
-  },
+  clearTokens: endSession,
   // Only a verdict from the server ends the session. A driver out of signal
   // must not be signed out mid-shift because a refresh could not be delivered.
   isTerminal: (error) => {
@@ -69,7 +92,7 @@ api.interceptors.response.use(
       // out. Clear up rather than looping on a refresh that keeps succeeding
       // while every real request keeps failing.
       if (error.response?.status === 401 && original?._retried) {
-        await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
+        await endSession();
       }
       return Promise.reject(error);
     }
