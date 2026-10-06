@@ -16,6 +16,16 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+/**
+ * Bumped synchronously whenever the session ends deliberately, so a refresh
+ * already in flight can tell that its result belongs to a session that is over.
+ * See the sessionGeneration note in tokenRefresh.ts.
+ */
+let sessionGeneration = 0;
+export const invalidateSession = (): void => {
+  sessionGeneration += 1;
+};
+
 const clearTokens = () => {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
@@ -34,6 +44,7 @@ const refresher = createTokenRefresher({
     localStorage.setItem('refreshToken', refreshToken);
   },
   clearTokens,
+  sessionGeneration: () => sessionGeneration,
   // Only a verdict from the server ends the session. A rejection with no
   // response at all is an outage, and signing someone out over one would be
   // throwing away a refresh token that is probably still good.

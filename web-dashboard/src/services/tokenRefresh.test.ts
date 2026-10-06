@@ -24,6 +24,7 @@ const setup = (overrides: Partial<Parameters<typeof createTokenRefresher>[0]> = 
       const status = (error as { response?: { status?: number } })?.response?.status;
       return status === 400 || status === 401 || status === 403;
     },
+    sessionGeneration: () => 0,
     ...overrides,
   });
   return { refresher, saveTokens, clearTokens, requestNewTokens };
@@ -139,6 +140,7 @@ describe('a session that ends while a refresh is in flight', () => {
       saveTokens,
       clearTokens,
       isTerminal: () => true,
+      sessionGeneration: () => 0,
     });
 
     const pending = refresher.refresh();
@@ -163,6 +165,7 @@ describe('a session that ends while a refresh is in flight', () => {
       saveTokens,
       clearTokens: vi.fn(),
       isTerminal: () => true,
+      sessionGeneration: () => 0,
     });
 
     const pending = refresher.refresh();
@@ -198,6 +201,7 @@ describe('a terminal rejection that arrives after the session changed', () => {
       saveTokens: vi.fn(),
       clearTokens,
       isTerminal: () => true,
+      sessionGeneration: () => 0,
     });
 
     const pending = refresher.refresh();
@@ -215,5 +219,66 @@ describe('a terminal rejection that arrives after the session changed', () => {
 
     await expect(refresher.refresh()).resolves.toEqual({ status: 'expired' });
     expect(clearTokens).toHaveBeenCalled();
+  });
+});
+
+describe('logout that lands before the stored token can be re-read', () => {
+  // The comparison alone is not enough where reading storage is async. The
+  // read can resolve with the old token, logout can run while the refresher is
+  // between that resolution and its write, and the comparison then passes
+  // against a value that is already gone - putting BOTH credentials back after
+  // the user signed out. A counter read synchronously either side cannot be
+  // interleaved with in that way.
+  it('does not save when the session generation moved, even if the token still matches', async () => {
+    let generation = 0;
+    let resolveRequest: (p: TokenPair) => void = () => {};
+    const saveTokens = vi.fn();
+
+    const refresher = createTokenRefresher({
+      // Deliberately unchanged: this is the case the token comparison misses.
+      getRefreshToken: () => 'stored-refresh',
+      requestNewTokens: () => new Promise<TokenPair>((r) => { resolveRequest = r; }),
+      saveTokens,
+      clearTokens: vi.fn(),
+      isTerminal: () => true,
+      sessionGeneration: () => generation,
+    });
+
+    const pending = refresher.refresh();
+    generation += 1;                         // logout, synchronously
+    resolveRequest(pair(1));
+
+    await expect(pending).resolves.toEqual({ status: 'superseded' });
+    expect(saveTokens).not.toHaveBeenCalled();
+  });
+
+  it('does not clear either, when a terminal rejection arrives after logout', async () => {
+    let generation = 0;
+    let rejectRequest: (e: unknown) => void = () => {};
+    const clearTokens = vi.fn();
+
+    const refresher = createTokenRefresher({
+      getRefreshToken: () => 'stored-refresh',
+      requestNewTokens: () => new Promise<TokenPair>((_, reject) => { rejectRequest = reject; }),
+      saveTokens: vi.fn(),
+      clearTokens,
+      isTerminal: () => true,
+      sessionGeneration: () => generation,
+    });
+
+    const pending = refresher.refresh();
+    generation += 1;
+    rejectRequest({ response: { status: 401 } });
+
+    await expect(pending).resolves.toEqual({ status: 'superseded' });
+    expect(clearTokens).not.toHaveBeenCalled();
+  });
+
+  it('saves normally while the generation is unchanged', async () => {
+    const { refresher, saveTokens } = setup();
+    await expect(refresher.refresh()).resolves.toEqual({
+      status: 'refreshed', accessToken: 'access-1',
+    });
+    expect(saveTokens).toHaveBeenCalled();
   });
 });

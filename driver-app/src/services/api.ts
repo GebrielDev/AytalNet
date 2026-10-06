@@ -34,11 +34,23 @@ api.interceptors.request.use(async (config) => {
 type SessionEndedHandler = () => void;
 let onSessionEnded: SessionEndedHandler | null = null;
 
+/**
+ * Bumped synchronously whenever the session ends deliberately. AsyncStorage is
+ * async, so comparing stored tokens is not enough on its own: the read can
+ * resolve with the old token, logout can run before the refresher writes, and
+ * the comparison then passes against a value that is already gone.
+ */
+let sessionGeneration = 0;
+export const invalidateSession = (): void => {
+  sessionGeneration += 1;
+};
+
 export const setOnSessionEnded = (handler: SessionEndedHandler | null): void => {
   onSessionEnded = handler;
 };
 
 const endSession = async (): Promise<void> => {
+  invalidateSession();
   await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
   onSessionEnded?.();
 };
@@ -58,6 +70,7 @@ const refresher = createTokenRefresher({
     ]);
   },
   clearTokens: endSession,
+  sessionGeneration: () => sessionGeneration,
   // Only a verdict from the server ends the session. A driver out of signal
   // must not be signed out mid-shift because a refresh could not be delivered.
   isTerminal: (error) => {
