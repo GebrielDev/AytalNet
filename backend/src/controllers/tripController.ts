@@ -122,9 +122,13 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
       startAddress,
     });
 
+    // 'phone' matches getActiveTrips. The dashboard shows a Phone column for
+    // every active trip, so without it a trip that arrives over the socket
+    // renders a blank cell until the page is reloaded and the REST fetch -
+    // which does include it - fills the gap.
     const fullTrip = await Trip.findByPk(trip.id, {
       include: [
-        { model: Driver, as: 'driver', attributes: ['id', 'name', 'employeeId'] },
+        { model: Driver, as: 'driver', attributes: ['id', 'name', 'employeeId', 'phone'] },
         { model: Vehicle, as: 'vehicle', attributes: ['id', 'plateNumber', 'make', 'model'] },
       ],
     });
