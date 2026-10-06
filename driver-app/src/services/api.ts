@@ -1,5 +1,6 @@
-import axios from 'axios';
+import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createTokenRefresher } from './tokenRefresh';
 
 // Production API URL - override via EXPO_PUBLIC_API_URL env var at build time
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://api.startechsolutions.us/api';
@@ -16,6 +17,97 @@ api.interceptors.request.use(async (config) => {
   }
   return config;
 });
+
+/**
+ * Called when the session has ended for good: the server rejected the refresh
+ * token, or a retried request still 401d because the account is gone.
+ *
+ * Clearing AsyncStorage is not enough on its own. AppNavigator chooses the
+ * authenticated stack from AuthContext's in-memory `driver`, so a deactivated
+ * driver would stay on the protected screens with every action failing until
+ * they restarted the app. The dashboard gets this for free because it ends a
+ * session with window.location.href, which reloads and resets state; there is
+ * no equivalent here.
+ *
+ * AuthProvider registers a handler on mount.
+ */
+type SessionEndedHandler = () => void;
+let onSessionEnded: SessionEndedHandler | null = null;
+
+export const setOnSessionEnded = (handler: SessionEndedHandler | null): void => {
+  onSessionEnded = handler;
+};
+
+const endSession = async (): Promise<void> => {
+  await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
+  onSessionEnded?.();
+};
+
+const refresher = createTokenRefresher({
+  getRefreshToken: () => AsyncStorage.getItem('refreshToken'),
+  // A bare axios call, not `api`: going through the instance would attach the
+  // dead access token and recurse through this very interceptor on its 401.
+  requestNewTokens: async (refreshToken) => {
+    const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+    return { accessToken: data.accessToken, refreshToken: data.refreshToken };
+  },
+  saveTokens: async ({ accessToken, refreshToken }) => {
+    await AsyncStorage.multiSet([
+      ['accessToken', accessToken],
+      ['refreshToken', refreshToken],
+    ]);
+  },
+  clearTokens: endSession,
+  // Only a verdict from the server ends the session. A driver out of signal
+  // must not be signed out mid-shift because a refresh could not be delivered.
+  isTerminal: (error) => {
+    const status = (error as AxiosError)?.response?.status;
+    return status === 400 || status === 401 || status === 403;
+  },
+});
+
+type RetriableConfig = InternalAxiosRequestConfig & { _retried?: boolean };
+
+/**
+ * There was no response interceptor at all, so an access token expiring after
+ * an hour simply failed whatever the driver was doing - most painfully, ending
+ * a trip that started more than an hour earlier, which is most of them. The
+ * refresh token was stored and never used.
+ */
+api.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const original = error.config as RetriableConfig | undefined;
+
+    const isRefreshable =
+      error.response?.status === 401 &&
+      original &&
+      !original._retried &&
+      !original.url?.includes('/auth/refresh') &&
+      !original.url?.includes('/auth/driver/login');
+
+    if (!isRefreshable) {
+      // A 401 on a request that already carried a freshly minted token means
+      // the account is gone or has been deactivated, not that the token aged
+      // out. Clear up rather than looping on a refresh that keeps succeeding
+      // while every real request keeps failing.
+      if (error.response?.status === 401 && original?._retried) {
+        await endSession();
+      }
+      return Promise.reject(error);
+    }
+
+    original._retried = true;
+    const result = await refresher.refresh();
+    // 'unavailable' keeps the credentials: the request failed, the session did
+    // not. 'expired' has already cleared them; AuthContext sends the driver to
+    // the login screen on next launch.
+    if (result.status !== 'refreshed') return Promise.reject(error);
+
+    original.headers.Authorization = `Bearer ${result.accessToken}`;
+    return api(original);
+  }
+);
 
 export const authApi = {
   login: (email: string, password: string) => api.post('/auth/driver/login', { email, password }),

@@ -50,7 +50,15 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     }
     next();
   } catch {
-    res.status(403).json({ error: 'Invalid token' });
+    // 401, not 403. An expired or malformed token is a failure to
+    // authenticate, which is what 401 means; 403 says "we know who you are and
+    // you still may not", which is what requireUser and requireDriver below
+    // report. Every other branch in this function already answers 401.
+    //
+    // It also has to be 401 for the clients' refresh interceptors to fire: an
+    // access token expires after an hour, and the one-hour expiry IS the case
+    // the refresh flow exists for. Answering 403 there meant it never ran.
+    res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
 

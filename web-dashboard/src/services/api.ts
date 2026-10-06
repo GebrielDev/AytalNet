@@ -1,4 +1,5 @@
-import axios from 'axios';
+import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import { createTokenRefresher } from './tokenRefresh';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -15,15 +16,87 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+const clearTokens = () => {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+};
+
+const refresher = createTokenRefresher({
+  getRefreshToken: () => localStorage.getItem('refreshToken'),
+  // A bare axios call, not `api`: going through the instance would attach the
+  // dead access token and recurse through this very interceptor on its 401.
+  requestNewTokens: async (refreshToken) => {
+    const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+    return { accessToken: data.accessToken, refreshToken: data.refreshToken };
+  },
+  saveTokens: ({ accessToken, refreshToken }) => {
+    localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('refreshToken', refreshToken);
+  },
+  clearTokens,
+  // Only a verdict from the server ends the session. A rejection with no
+  // response at all is an outage, and signing someone out over one would be
+  // throwing away a refresh token that is probably still good.
+  isTerminal: (error) => {
+    const status = (error as AxiosError)?.response?.status;
+    return status === 400 || status === 401 || status === 403;
+  },
+});
+
+type RetriableConfig = InternalAxiosRequestConfig & { _retried?: boolean };
+
+/**
+ * The access token lasts an hour, the refresh token seven days, and
+ * /auth/refresh trades one for the other. This used to throw both away on the
+ * first 401 and bounce to the login screen, so a dispatcher was signed out
+ * every hour mid-task with no warning and no way back but typing a password.
+ */
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      window.location.href = '/login';
+  async (error: AxiosError) => {
+    const original = error.config as RetriableConfig | undefined;
+
+    // `_retried` bounds this to one attempt per request: if the refreshed
+    // token is also refused, the 401 is real and must surface.
+    const isRefreshable =
+      error.response?.status === 401 &&
+      original &&
+      !original._retried &&
+      !original.url?.includes('/auth/refresh') &&
+      !original.url?.includes('/auth/login');
+
+    if (!isRefreshable) {
+      // A 401 on a request that already carried a freshly minted token means
+      // the token is fine and the account is not: deleted, or a driver made
+      // inactive. /auth/refresh only verifies the refresh token's signature,
+      // so it keeps succeeding; without this the dashboard would sit there
+      // looking signed in and re-running the same doomed cycle on every
+      // request.
+      if (error.response?.status === 401 && original?._retried) {
+        clearTokens();
+        window.location.href = '/login';
+      }
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+
+    original._retried = true;
+    const result = await refresher.refresh();
+
+    if (result.status === 'expired') {
+      window.location.href = '/login';
+      return Promise.reject(error);
+    }
+
+    if (result.status !== 'refreshed') {
+      // 'unavailable': the server never gave a verdict, so the credentials
+      // stay and the page reports the failure rather than signing anyone out.
+      // 'superseded': this belongs to a session that ended mid-flight; there
+      // is nothing to write and nothing to clear.
+      return Promise.reject(error);
+    }
+
+    original.headers.Authorization = `Bearer ${result.accessToken}`;
+    return api(original);
   }
 );
 

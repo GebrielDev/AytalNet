@@ -3,7 +3,11 @@ import sequelize from '../config/database';
 
 interface TripAttributes {
   id: number;
-  driverId: number;
+  // Nullable because the retention job severs it: seven years on, a trip is
+  // anonymised and keeps its mileage, dates and vehicle but loses the link to
+  // a person. See scripts/retentionPolicy.ts. Every live trip has a driver -
+  // startTrip always sets one - so only historical rows carry null.
+  driverId: number | null;
   vehicleId: number;
   status: 'in_progress' | 'completed' | 'cancelled';
   startTime: Date;
@@ -12,8 +16,10 @@ interface TripAttributes {
   startOdometer: number;
   endOdometer?: number;
   totalMileage?: number;
-  startLatitude: number;
-  startLongitude: number;
+  // Cleared by the same job: a trip's endpoints are a home address as often
+  // as not.
+  startLatitude: number | null;
+  startLongitude: number | null;
   startAddress?: string;
   endLatitude?: number;
   endLongitude?: number;
@@ -26,7 +32,7 @@ interface TripCreationAttributes extends Optional<TripAttributes, 'id' | 'status
 
 class Trip extends Model<TripAttributes, TripCreationAttributes> implements TripAttributes {
   public id!: number;
-  public driverId!: number;
+  public driverId!: number | null;
   public vehicleId!: number;
   public status!: 'in_progress' | 'completed' | 'cancelled';
   public startTime!: Date;
@@ -35,8 +41,8 @@ class Trip extends Model<TripAttributes, TripCreationAttributes> implements Trip
   public startOdometer!: number;
   public endOdometer?: number;
   public totalMileage?: number;
-  public startLatitude!: number;
-  public startLongitude!: number;
+  public startLatitude!: number | null;
+  public startLongitude!: number | null;
   public startAddress?: string;
   public endLatitude?: number;
   public endLongitude?: number;
@@ -54,7 +60,7 @@ Trip.init(
     },
     driverId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       field: 'driver_id',
     },
     vehicleId: {
@@ -95,12 +101,12 @@ Trip.init(
     },
     startLatitude: {
       type: DataTypes.DECIMAL(10, 8),
-      allowNull: false,
+      allowNull: true,
       field: 'start_latitude',
     },
     startLongitude: {
       type: DataTypes.DECIMAL(11, 8),
-      allowNull: false,
+      allowNull: true,
       field: 'start_longitude',
     },
     startAddress: {

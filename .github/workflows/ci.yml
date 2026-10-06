@@ -1,0 +1,83 @@
+name: CI
+
+# The repository had no automated checks at all: every typecheck, build and
+# test ran only where someone remembered to run it. These are the same commands
+# a contributor runs locally.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+        working-directory: backend
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: backend
+
+      - name: Test
+        run: npm test
+        working-directory: backend
+
+      - name: Build
+        run: npm run build
+        working-directory: backend
+
+  web-dashboard:
+    name: Web dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web-dashboard/package-lock.json
+
+      - run: npm ci
+        working-directory: web-dashboard
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: web-dashboard
+
+      - name: Test
+        run: npm test
+        working-directory: web-dashboard
+
+      - name: Build
+        run: npm run build
+        working-directory: web-dashboard
+
+  driver-app:
+    name: Driver app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: driver-app/package-lock.json
+
+      - run: npm ci
+        working-directory: driver-app
+
+      # No build step: an Expo build needs EAS credentials, which do not belong
+      # in pull-request CI. A typecheck still catches the breakages that matter
+      # here, and it had none before.
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: driver-app

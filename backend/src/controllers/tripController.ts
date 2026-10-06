@@ -92,7 +92,19 @@ export const getTripById = async (req: Request, res: Response): Promise<void> =>
 export const startTrip = async (req: Request, res: Response): Promise<void> => {
   try {
     const driver = req.driver!;
-    const { vehicleId, startOdometer, startLatitude, startLongitude, startAddress } = req.body;
+    const { vehicleId, startOdometer, startLatitude, startLongitude, startAddress } = req.body ?? {};
+
+    // start_latitude and start_longitude became nullable so the retention job
+    // can strip the location from trips past their seven-year window. That
+    // relaxed the only thing stopping a live trip being created without one,
+    // so the check the NOT NULL used to perform now has to happen here.
+    const isCoordinate = (value: unknown, limit: number): boolean =>
+      typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= limit;
+
+    if (!isCoordinate(startLatitude, 90) || !isCoordinate(startLongitude, 180)) {
+      res.status(400).json({ error: 'A valid start latitude and longitude are required' });
+      return;
+    }
 
     const existingTrip = await Trip.findOne({ where: { driverId: driver.id, status: 'in_progress' } });
     if (existingTrip) {
