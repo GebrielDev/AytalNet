@@ -121,6 +121,17 @@ describe('odometer readings are required', () => {
       expect(vehicleUpdate).not.toHaveBeenCalled();
     });
 
+    // Raised by Codex review: it expected a body-less request to throw in the
+    // destructuring and surface as a 500. It does not - express.json() defaults
+    // req.body to an object - but the case is worth pinning either way.
+    it('rejects a request with no body at all, as a 400 rather than a 500', async () => {
+      const res = await request(await buildApp()).post('/trips/99/end');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/odometer/i);
+      expect(tripUpdate).not.toHaveBeenCalled();
+    });
+
     it('still rejects a reading below the start reading', async () => {
       const res = await request(await buildApp()).post('/trips/99/end').send({ ...endBody, endOdometer: 999 });
 

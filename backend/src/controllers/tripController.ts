@@ -180,7 +180,10 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
 export const endTrip = async (req: Request, res: Response): Promise<void> => {
   try {
     const driver = req.driver!;
-    const { endOdometer, endLatitude, endLongitude, endAddress } = req.body;
+    // `?? {}` mirrors startTrip. express.json() already defaults req.body to
+    // an object, so this is not load-bearing today - it keeps the guard below
+    // working if this route is ever mounted without that parser.
+    const { endOdometer, endLatitude, endLongitude, endAddress } = req.body ?? {};
 
     const trip = await Trip.findOne({ where: { id: req.params.id, driverId: driver.id, status: 'in_progress' } });
     if (!trip) {
