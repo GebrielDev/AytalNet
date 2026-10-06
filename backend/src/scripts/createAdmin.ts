@@ -1,3 +1,4 @@
+import { col, fn, where } from 'sequelize';
 import sequelize from '../config/database';
 import { User } from '../models';
 import { parseAdminArgs } from './adminArgs';
@@ -32,7 +33,16 @@ const run = async (): Promise<void> => {
 
   await sequelize.authenticate();
 
-  const existing = await User.findOne({ where: { email: args.email } });
+  // Case-insensitively, because that inertness is otherwise trivially lost:
+  // POST /api/users stores whatever case was submitted, the unique constraint
+  // on a plain VARCHAR is case-sensitive in Postgres, and parseAdminArgs has
+  // already lowercased this address. A plain equality lookup therefore misses
+  // an existing Person@Example.com, and the script goes on to create a SECOND
+  // person@example.com - with this script's default admin role, where it was
+  // supposed to leave an existing dispatcher alone.
+  const existing = await User.findOne({
+    where: where(fn('lower', col('email')), args.email),
+  });
   if (existing) {
     console.log(
       `${existing.email} already exists (id ${existing.id}, role ${existing.role}, name "${existing.name}").`
