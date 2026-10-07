@@ -80,7 +80,7 @@ const Failed = ({ onRetry }: { onRetry: () => void }) => (
 );
 
 /** The trips behind one of the time-window cards. */
-export function TripsDetail({ startDate }: { startDate: string }) {
+export function TripsDetail({ startDate, asOf }: { startDate: string; asOf?: string }) {
   const [rows, setRows] = useState<TripRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -92,9 +92,16 @@ export function TripsDetail({ startDate }: { startDate: string }) {
       setLoading(true);
       setFailed(false);
       try {
-        // startDate is the server's own boundary, passed through untouched, so
-        // this list is the same set the count on the card came from.
-        const res = await tripsApi.getAll({ startDate, page: wanted, limit: PAGE_SIZE });
+        // Both bounds come from the server, passed through untouched, so this
+        // list is the same set the count on the card came from - asOf excludes
+        // trips that started after the summary was taken, which the number
+        // above has not counted.
+        const res = await tripsApi.getAll({
+          startDate,
+          ...(asOf ? { endDate: asOf } : {}),
+          page: wanted,
+          limit: PAGE_SIZE,
+        });
         setRows(res.data.trips ?? []);
         setTotal(res.data.pagination?.total ?? 0);
         setPage(wanted);
@@ -105,7 +112,7 @@ export function TripsDetail({ startDate }: { startDate: string }) {
         setLoading(false);
       }
     },
-    [startDate]
+    [startDate, asOf]
   );
 
   useEffect(() => {
@@ -147,11 +154,15 @@ export function TripsDetail({ startDate }: { startDate: string }) {
               <td className="px-5 py-3 text-sm text-gray-600">
                 {new Date(trip.startTime).toLocaleString()}
               </td>
+              {/* Compared against null rather than tested for truthiness: a
+                  trip under a minute rounds to 0 minutes and one that returned
+                  to the same odometer is 0 miles. Both are recorded values, and
+                  showing them as missing misreports the trip. */}
               <td className="px-5 py-3 text-sm text-gray-600">
-                {trip.durationMinutes ? `${trip.durationMinutes} min` : '—'}
+                {trip.durationMinutes != null ? `${trip.durationMinutes} min` : '—'}
               </td>
               <td className="px-5 py-3 text-sm text-gray-600">
-                {trip.totalMileage ? `${trip.totalMileage} mi` : '—'}
+                {trip.totalMileage != null ? `${trip.totalMileage} mi` : '—'}
               </td>
               <td className="px-5 py-3">
                 <Badge status={trip.status} />

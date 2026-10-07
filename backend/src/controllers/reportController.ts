@@ -53,7 +53,15 @@ export const getTripReport = async (req: Request, res: Response): Promise<void> 
 
 export const getSummaryStats = async (req: Request, res: Response): Promise<void> => {
   try {
-    const today = new Date();
+    // Captured before the counts run and sent back as `asOf`, so a drill-down
+    // can ask for the same window that was counted rather than everything
+    // since. Without an upper bound a trip that starts after this response but
+    // before the card is clicked appears in the list and not in the number
+    // above it - and the cards only refresh on a reconnect, so that gap can be
+    // the whole time a tab is left open.
+    const asOf = new Date();
+
+    const today = new Date(asOf);
     today.setHours(0, 0, 0, 0);
 
     const weekAgo = new Date(today);
@@ -86,6 +94,7 @@ export const getSummaryStats = async (req: Request, res: Response): Promise<void
       today: today.toISOString(),
       week: weekAgo.toISOString(),
       month: monthAgo.toISOString(),
+      asOf: asOf.toISOString(),
     };
 
     res.json({ totalDrivers, activeDrivers, totalVehicles, activeVehicles, activeTrips, todayTrips, weekTrips, monthTrips, ranges });

@@ -73,6 +73,27 @@ describe('GET /reports/summary ranges', () => {
     expect(new Date(month).getTime()).toBeLessThan(new Date(week).getTime());
   });
 
+  // Without an upper bound the drill-down lists trips the count never saw: the
+  // cards refresh only on a reconnect, so a trip starting while a tab sits open
+  // would show in the list and not in the number above it.
+  it('returns an asOf upper bound taken before the counts ran', async () => {
+    const before = Date.now();
+    const res = await request(await buildApp()).get('/summary');
+    const after = Date.now();
+
+    const asOf = new Date(res.body.ranges.asOf).getTime();
+    expect(asOf).toBeGreaterThanOrEqual(before);
+    expect(asOf).toBeLessThanOrEqual(after);
+  });
+
+  it('puts asOf at or after every window boundary', async () => {
+    const { today, week, month, asOf } = (await request(await buildApp()).get('/summary')).body.ranges;
+
+    for (const boundary of [today, week, month]) {
+      expect(new Date(asOf).getTime()).toBeGreaterThanOrEqual(new Date(boundary).getTime());
+    }
+  });
+
   it('keeps the existing fields, so the cards do not change shape', async () => {
     const res = await request(await buildApp()).get('/summary');
 

@@ -28,12 +28,14 @@ interface Stats {
   // a drill-down filters on exactly what was counted - deriving them here
   // would use the browser's timezone and the list would disagree with the
   // number above it.
-  ranges?: { today: string; week: string; month: string };
+  // asOf is the instant the counts were taken, used as the drill-down's upper
+  // bound so the list cannot include a trip the number has not counted.
+  ranges?: { today: string; week: string; month: string; asOf: string };
 }
 
 /** Which card's detail layer is open, if any. */
 type Detail =
-  | { kind: 'trips'; title: string; startDate: string }
+  | { kind: 'trips'; title: string; startDate: string; asOf?: string }
   | { kind: 'drivers' }
   | { kind: 'vehicles' };
 
@@ -73,6 +75,7 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [feed, setFeed] = useState<FeedState>('connecting');
   const [detail, setDetail] = useState<Detail | null>(null);
+  const closeDetail = useCallback(() => setDetail(null), []);
 
   // A fetch and the socket both write activeTrips, and the fetch is not
   // instant. A trip:ended that lands while a refetch is in flight is NEWER than
@@ -240,7 +243,9 @@ export default function Dashboard() {
   // the number, and a drill-down that disagrees with the card above it is
   // worse than none.
   const tripDetail = (title: string, startDate: string | undefined): Detail | undefined =>
-    statsFailed || !startDate ? undefined : { kind: 'trips', title, startDate };
+    statsFailed || !startDate
+      ? undefined
+      : { kind: 'trips', title, startDate, asOf: stats?.ranges?.asOf };
 
   // Active Trips is deliberately not clickable: the full list of them is
   // already on this page, directly below.
@@ -521,9 +526,11 @@ export default function Dashboard() {
             ? `Currently active ${detail.kind}`
             : undefined
         }
-        onClose={() => setDetail(null)}
+        onClose={closeDetail}
       >
-        {detail?.kind === 'trips' && <TripsDetail startDate={detail.startDate} />}
+        {detail?.kind === 'trips' && (
+          <TripsDetail startDate={detail.startDate} asOf={detail.asOf} />
+        )}
         {detail?.kind === 'drivers' && <RosterDetail kind="drivers" />}
         {detail?.kind === 'vehicles' && <RosterDetail kind="vehicles" />}
       </Modal>

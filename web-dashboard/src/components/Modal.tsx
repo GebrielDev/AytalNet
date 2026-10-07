@@ -26,6 +26,15 @@ export default function Modal({ open, title, subtitle, onClose, children }: Moda
   const titleId = useId();
   const subtitleId = useId();
 
+  // Held in a ref so the effect below does not depend on this callback's
+  // identity. Callers pass an inline arrow, which is a new function on every
+  // render - and this dashboard rerenders on every socket trip event. The
+  // effect would then tear down and set up again mid-dialog, handing focus
+  // back to the card and then to the panel, stealing it from whatever the user
+  // was actually on.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
 
@@ -37,7 +46,7 @@ export default function Modal({ open, title, subtitle, onClose, children }: Moda
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab' || !panel.current) return;
@@ -52,12 +61,20 @@ export default function Modal({ open, title, subtitle, onClose, children }: Moda
       }
       const first = items[0];
       const last = items[items.length - 1];
-      if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      } else if (event.shiftKey && document.activeElement === first) {
+      const active = document.activeElement as HTMLElement | null;
+      // The panel itself holds focus when the dialog opens, and it is not one
+      // of `items`. Treating only `first` as the backward boundary let the
+      // very first Shift+Tab fall through to the page behind, which is exactly
+      // what this trap exists to prevent. Anything not inside the dialog is a
+      // boundary in both directions.
+      const inside = active !== null && items.includes(active);
+
+      if (event.shiftKey && (!inside || active === first)) {
         event.preventDefault();
         last.focus();
+      } else if (!event.shiftKey && (!inside || active === last)) {
+        event.preventDefault();
+        first.focus();
       }
     };
 
@@ -75,7 +92,7 @@ export default function Modal({ open, title, subtitle, onClose, children }: Moda
       document.body.style.overflow = previousOverflow;
       opener?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
