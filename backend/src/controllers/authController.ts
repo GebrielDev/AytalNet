@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { User, Driver, PasswordResetToken } from '../models';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../middleware/auth';
-import { sendPasswordResetEmail, isEmailConfigured } from '../config/email';
+import { sendPasswordResetEmail, emailProvider } from '../config/email';
 
 /**
  * Pull a required string out of a request body.
@@ -166,10 +166,15 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
       // The address exists but we could not reach it. Say nothing different to
       // the caller - that would leak which addresses are registered - but make
       // it loud in the logs, and in development print the link so the flow is
-      // still testable without an SMTP server.
+      // still testable without a mail provider.
+      //
+      // The provider is named because the two failures need different fixes,
+      // and the log is where that gets diagnosed: a send that fails is
+      // credentials or a sending domain, nothing configured is a missing
+      // environment variable.
       console.error(
         `[auth] Could not email a reset link to ${email} (${accountType}).`,
-        isEmailConfigured ? 'SMTP send failed.' : 'SMTP is not configured.'
+        emailProvider ? `${emailProvider} send failed.` : 'No email provider is configured.'
       );
       if (process.env.NODE_ENV !== 'production') {
         console.log(`[auth] Development reset link for ${email}: ${resetLink}`);

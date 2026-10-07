@@ -40,6 +40,24 @@ database: they mock the models and the auth config, so `npm test` runs on a
 clean checkout with nothing but `npm install`. The same commands run in CI
 (`.github/workflows/ci.yml`).
 
+### Password Reset Email
+
+Password resets are sent through [Resend](https://resend.com) over its HTTPS
+API. Set `RESEND_API_KEY`, and verify the sending domain in Resend so it
+matches `EMAIL_FROM` — an unverified domain is rejected with "The domain is not
+verified".
+
+SMTP is kept as a fallback and is used only when `RESEND_API_KEY` is absent.
+It is not the default because the Microsoft 365 account previously used
+refused client submission at the tenant level (`535 5.7.139`), which left
+password reset broken for dispatchers and drivers alike, and because hosts
+commonly block outbound SMTP — Railway disables it below the Pro plan.
+
+A send that fails never changes what the API tells the caller, since that would
+reveal which addresses are registered; it is logged instead, naming the
+provider. Outside production the reset link is also printed to the log, so the
+flow can be exercised with no mail provider at all.
+
 ### Seed Database
 
 ```bash
