@@ -52,7 +52,7 @@ vi.mock('../models', () => ({
 
 vi.mock('../config/email', () => ({
   sendPasswordResetEmail: vi.fn().mockResolvedValue(true),
-  isEmailConfigured: true,
+  emailProvider: 'resend',
 }));
 
 vi.mock('../middleware/auth', () => ({

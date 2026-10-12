@@ -3,14 +3,52 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE, EMAIL_FROM } = process.env;
+const {
+  RESEND_API_KEY,
+  SMTP_HOST,
+  SMTP_PORT,
+  SMTP_USER,
+  SMTP_PASS,
+  SMTP_SECURE,
+  EMAIL_FROM,
+} = process.env;
 
-export const isEmailConfigured = Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS);
+const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+// A password reset is sent inside a request the user is waiting on, so a
+// provider that hangs must not hold the handler open indefinitely.
+const SEND_TIMEOUT_MS = 10_000;
+
+export type EmailProvider = 'resend' | 'smtp';
+
+/**
+ * Which transport sends the mail, or null when none is configured.
+ *
+ * Resend wins when both are set, because SMTP here did not work: Microsoft 365
+ * refuses client submission at the tenant level, so every send failed with
+ *
+ *   535 5.7.139 Authentication unsuccessful, SmtpClientAuthentication is
+ *   disabled for the Tenant
+ *
+ * and password reset was dead for dispatchers and drivers alike. Resend is
+ * reached over HTTPS, which also cannot be blocked by the host's plan tier or
+ * by port filtering the way SMTP can - Railway disables outbound SMTP below
+ * the Pro plan and recommends a transactional API for every plan.
+ *
+ * SMTP is kept rather than deleted so an environment that has working
+ * credentials keeps working, and so this can be switched back by unsetting one
+ * variable.
+ */
+export const emailProvider: EmailProvider | null = RESEND_API_KEY
+  ? 'resend'
+  : SMTP_HOST && SMTP_USER && SMTP_PASS
+  ? 'smtp'
+  : null;
+
 
 let transporter: Transporter | null = null;
 
 const getTransporter = (): Transporter | null => {
-  if (!isEmailConfigured) return null;
+  if (emailProvider !== 'smtp') return null;
   if (!transporter) {
     const port = Number(SMTP_PORT) || 587;
     transporter = nodemailer.createTransport({
@@ -33,22 +71,39 @@ interface SendArgs {
   html: string;
 }
 
-/**
- * Sends an email. Resolves to false rather than throwing when SMTP is not
- * configured or delivery fails, so callers can decide what to do without the
- * request failing. Never include secrets in the message: it is delivered in
- * plain text over the internet.
- */
-export const sendMail = async ({ to, subject, text, html }: SendArgs): Promise<boolean> => {
-  const tx = getTransporter();
-  if (!tx) {
-    console.warn(
-      '[email] SMTP is not configured (needs SMTP_HOST, SMTP_USER, SMTP_PASS); skipping send to',
-      to
-    );
+const sendViaResend = async ({ to, subject, text, html }: SendArgs): Promise<boolean> => {
+  try {
+    const response = await fetch(RESEND_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ from: fromAddress, to: [to], subject, text, html }),
+      signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      // The body carries the actual reason - an unverified sending domain, a
+      // malformed from address - which is the difference between a fixable
+      // configuration error and a mystery. It never contains the API key.
+      const detail = await response.text().catch(() => '');
+      console.error(
+        `[email] Resend rejected the send to ${to}: ${response.status} ${response.statusText}`,
+        detail.slice(0, 500)
+      );
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('[email] Resend request to', to, 'failed', error);
     return false;
   }
+};
 
+const sendViaSmtp = async ({ to, subject, text, html }: SendArgs): Promise<boolean> => {
+  const tx = getTransporter();
+  if (!tx) return false;
   try {
     await tx.sendMail({ from: fromAddress, to, subject, text, html });
     return true;
@@ -56,6 +111,24 @@ export const sendMail = async ({ to, subject, text, html }: SendArgs): Promise<b
     console.error('[email] Failed to send to', to, error);
     return false;
   }
+};
+
+/**
+ * Sends an email. Resolves to false rather than throwing when no provider is
+ * configured or delivery fails, so callers can decide what to do without the
+ * request failing. Never include secrets in the message: it is delivered in
+ * plain text over the internet.
+ */
+export const sendMail = async (args: SendArgs): Promise<boolean> => {
+  if (emailProvider === 'resend') return sendViaResend(args);
+  if (emailProvider === 'smtp') return sendViaSmtp(args);
+
+  console.warn(
+    '[email] No email provider is configured (set RESEND_API_KEY, or ' +
+      'SMTP_HOST/SMTP_USER/SMTP_PASS); skipping send to',
+    args.to
+  );
+  return false;
 };
 
 const escapeHtml = (value: string): string =>
