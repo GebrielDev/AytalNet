@@ -130,8 +130,8 @@ export default function Trips() {
                   </td>
                   <td className="px-5 py-3.5 text-sm text-gray-600">{trip.vehicle?.plateNumber}</td>
                   <td className="px-5 py-3.5 text-sm text-gray-600">{new Date(trip.startTime).toLocaleString()}</td>
-                  <td className="px-5 py-3.5 text-sm text-gray-600">{trip.durationMinutes ? `${trip.durationMinutes} min` : '-'}</td>
-                  <td className="px-5 py-3.5 text-sm text-gray-600">{trip.totalMileage ? `${trip.totalMileage} mi` : '-'}</td>
+                  <td className="px-5 py-3.5 text-sm text-gray-600">{trip.durationMinutes != null ? `${trip.durationMinutes} min` : '-'}</td>
+                  <td className="px-5 py-3.5 text-sm text-gray-600">{trip.totalMileage != null ? `${trip.totalMileage} mi` : '-'}</td>
                   <td className="px-5 py-3.5">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(trip.status)}`}>{trip.status.replace(/_/g, ' ')}</span>
                   </td>
@@ -170,8 +170,8 @@ export default function Trips() {
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
               <div><span className="font-medium text-gray-700">Vehicle:</span> {trip.vehicle?.plateNumber}</div>
-              <div><span className="font-medium text-gray-700">Mileage:</span> {trip.totalMileage ? `${trip.totalMileage} mi` : '-'}</div>
-              <div><span className="font-medium text-gray-700">Duration:</span> {trip.durationMinutes ? `${trip.durationMinutes} min` : '-'}</div>
+              <div><span className="font-medium text-gray-700">Mileage:</span> {trip.totalMileage != null ? `${trip.totalMileage} mi` : '-'}</div>
+              <div><span className="font-medium text-gray-700">Duration:</span> {trip.durationMinutes != null ? `${trip.durationMinutes} min` : '-'}</div>
               <div><span className="font-medium text-gray-700">Start:</span> {new Date(trip.startTime).toLocaleDateString()}</div>
             </div>
             <div className="flex gap-2 pt-1">
@@ -207,10 +207,10 @@ export default function Trips() {
                 {[
                   ['Driver', selectedTrip.driver?.name],
                   ['Vehicle', selectedTrip.vehicle?.plateNumber],
-                  ['Duration', selectedTrip.durationMinutes ? `${selectedTrip.durationMinutes} min` : '-'],
+                  ['Duration', selectedTrip.durationMinutes != null ? `${selectedTrip.durationMinutes} min` : '-'],
                   ['Start Odometer', `${selectedTrip.startOdometer} mi`],
-                  ['End Odometer', selectedTrip.endOdometer ? `${selectedTrip.endOdometer} mi` : '-'],
-                  ['Total Mileage', selectedTrip.totalMileage ? `${selectedTrip.totalMileage} mi` : '-'],
+                  ['End Odometer', selectedTrip.endOdometer != null ? `${selectedTrip.endOdometer} mi` : '-'],
+                  ['Total Mileage', selectedTrip.totalMileage != null ? `${selectedTrip.totalMileage} mi` : '-'],
                   ['Start Time', new Date(selectedTrip.startTime).toLocaleString()],
                   ...(selectedTrip.endTime ? [['End Time', new Date(selectedTrip.endTime).toLocaleString()]] : []),
                 ].map(([label, value]) => (
