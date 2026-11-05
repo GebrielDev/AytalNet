@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
+import multer from 'multer';
 import request from 'supertest';
 
 const tripFindOne = vi.fn();
@@ -7,6 +8,7 @@ const tripCreate = vi.fn();
 const tripFindByPk = vi.fn();
 const vehicleFindByPk = vi.fn();
 const vehicleUpdate = vi.fn();
+const photoBulkCreate = vi.fn();
 
 vi.mock('../models', () => ({
   Trip: {
@@ -14,8 +16,10 @@ vi.mock('../models', () => ({
     create: (...a: unknown[]) => tripCreate(...a),
     findByPk: (...a: unknown[]) => tripFindByPk(...a),
     findAll: vi.fn(), count: vi.fn(), update: vi.fn(),
+    sequelize: { transaction: async () => ({ commit: vi.fn(), rollback: vi.fn() }) },
   },
-  TripPhoto: {}, Driver: {},
+  TripPhoto: { bulkCreate: (...a: unknown[]) => photoBulkCreate(...a) },
+  Driver: {},
   Vehicle: {
     findByPk: (...a: unknown[]) => vehicleFindByPk(...a),
     update: (...a: unknown[]) => vehicleUpdate(...a),
@@ -24,15 +28,18 @@ vi.mock('../models', () => ({
 vi.mock('../config/cloudinary', () => ({ default: { uploader: { upload_stream: vi.fn() } } }));
 
 const buildApp = async () => {
-  const { startTrip, endTrip } = await import('./tripController');
+  const { startTrip, endTrip, REQUIRED_START_PHOTOS } = await import('./tripController');
   const app = express();
   app.use(express.json());
+  const upload = multer({ storage: multer.memoryStorage() }).fields(
+    REQUIRED_START_PHOTOS.map((name) => ({ name, maxCount: 1 }))
+  );
   // Stands in for authenticateToken + requireDriver, which have their own tests.
   const asDriver = (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     (req as unknown as { driver: unknown }).driver = { id: 7 };
     next();
   };
-  app.post('/trips/start', asDriver, startTrip);
+  app.post('/trips/start', asDriver, upload, startTrip);
   app.post('/trips/:id/end', asDriver, endTrip);
   return app;
 };
@@ -43,6 +50,20 @@ const startBody = {
 };
 
 const endBody = { endOdometer: 1050, endLatitude: 33.4484, endLongitude: -112.074 };
+
+/**
+ * Starting a trip now carries its required photographs in the same request,
+ * and the readings travel as one JSON field so that a string reading is still
+ * distinguishable from a number - which is what the cases below turn on.
+ */
+const postStart = async (payload: Record<string, unknown>) => {
+  const { REQUIRED_START_PHOTOS } = await import('./tripController');
+  let req = request(await buildApp()).post('/trips/start').field('payload', JSON.stringify(payload));
+  for (const name of REQUIRED_START_PHOTOS) {
+    req = req.attach(name, Buffer.from('fake-jpeg-bytes'), `${name}.jpg`);
+  }
+  return req;
+};
 
 /**
  * The driver app requires a reading on both screens, but that is not the
@@ -64,6 +85,8 @@ describe('odometer readings are required', () => {
   describe('POST /trips/start', () => {
     beforeEach(() => {
       tripFindOne.mockResolvedValue(null);
+      photoBulkCreate.mockReset();
+      photoBulkCreate.mockResolvedValue([]);
     });
 
     it.each([
@@ -76,7 +99,7 @@ describe('odometer readings are required', () => {
       ['negative', { startOdometer: -500 }],
     ])('rejects %s with 400 and creates no trip', async (_label, override) => {
       const { startOdometer, ...rest } = startBody;
-      const res = await request(await buildApp()).post('/trips/start').send({ ...rest, ...override });
+      const res = await postStart({ ...rest, ...override });
 
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/odometer/i);
@@ -84,12 +107,13 @@ describe('odometer readings are required', () => {
     });
 
     it('accepts zero, which is a real reading on a new vehicle', async () => {
-      const res = await request(await buildApp())
-        .post('/trips/start')
-        .send({ ...startBody, startOdometer: 0 });
+      const res = await postStart({ ...startBody, startOdometer: 0 });
 
       expect(res.status).toBe(201);
-      expect(tripCreate).toHaveBeenCalledWith(expect.objectContaining({ startOdometer: 0 }));
+      expect(tripCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ startOdometer: 0 }),
+        expect.anything()
+      );
     });
   });
 
