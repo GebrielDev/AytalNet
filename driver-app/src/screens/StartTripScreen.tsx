@@ -63,7 +63,14 @@ export default function StartTripScreen() {
       return;
     }
 
-    if (!assignedVehicle || odometer.trim() === '' || !licensePlatePhoto || !selfiePhoto || !odometerPhoto) {
+    if (
+      !assignedVehicle ||
+      odometer.trim() === '' ||
+      !licensePlatePhoto ||
+      !selfiePhoto ||
+      !odometerPhoto ||
+      !passengerPhoto
+    ) {
       Alert.alert('Error', 'Please complete all required fields');
       return;
     }
@@ -72,33 +79,51 @@ export default function StartTripScreen() {
     try {
       const location = await Location.getCurrentPositionAsync({});
 
-      const tripRes = await tripsApi.start({
-        vehicleId: assignedVehicle.id,
-        startOdometer: odometerValue,
-        startLatitude: location.coords.latitude,
-        startLongitude: location.coords.longitude,
-      });
+      /**
+       * One request creates the trip and stores all four photographs together.
+       *
+       * This used to be a POST that created the trip followed by four separate
+       * uploads. An upload that failed part way through left a trip in progress
+       * with some or none of its photos, showed the driver "Failed to start
+       * trip", and then blocked the retry with "You already have an active
+       * trip". Sending them together means a failure here starts no trip at
+       * all, so retrying is always safe.
+       *
+       * The readings go in one JSON field because multipart would turn them
+       * into strings, which the API rejects on purpose.
+       */
+      const formData = new FormData();
+      formData.append(
+        'payload',
+        JSON.stringify({
+          vehicleId: assignedVehicle.id,
+          startOdometer: odometerValue,
+          startLatitude: location.coords.latitude,
+          startLongitude: location.coords.longitude,
+        })
+      );
 
-      const tripId = tripRes.data.id;
-
-      // Upload photos
-      const uploadPhoto = async (uri: string, photoType: string) => {
-        const formData = new FormData();
-        formData.append('photo', { uri, type: 'image/jpeg', name: `${photoType}.jpg` } as any);
-        formData.append('photoType', photoType);
-        await tripsApi.uploadPhoto(tripId, formData);
+      const attach = (photoType: string, uri: string) => {
+        formData.append(photoType, {
+          uri,
+          type: 'image/jpeg',
+          name: `${photoType}.jpg`,
+        } as any);
       };
 
-      await uploadPhoto(licensePlatePhoto, 'license_plate');
-      await uploadPhoto(selfiePhoto, 'driver_selfie');
-      await uploadPhoto(odometerPhoto, 'start_odometer');
-      if (passengerPhoto) {
-        await uploadPhoto(passengerPhoto, 'passenger');
-      }
+      attach('license_plate', licensePlatePhoto);
+      attach('driver_selfie', selfiePhoto);
+      attach('start_odometer', odometerPhoto);
+      attach('passenger', passengerPhoto);
+
+      const tripRes = await tripsApi.start(formData);
 
       navigation.replace('ActiveTrip', { trip: tripRes.data });
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.error || 'Failed to start trip');
+      Alert.alert(
+        'Error',
+        error.response?.data?.error || 'Failed to start trip. No trip was started, so you can try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -170,7 +195,7 @@ export default function StartTripScreen() {
         )}
       </TouchableOpacity>
 
-      <Text style={styles.sectionTitle}>Passenger Photo (Optional)</Text>
+      <Text style={styles.sectionTitle}>Passenger Photo *</Text>
       <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('passenger')}>
         {passengerPhoto ? (
           <Image source={{ uri: passengerPhoto }} style={styles.photoPreview} />

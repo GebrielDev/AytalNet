@@ -137,7 +137,12 @@ export const vehiclesApi = {
 export const tripsApi = {
   getActiveTrip: () => api.get('/trips/my-active'),
   getMyTrips: () => api.get('/trips/my-trips'),
-  start: (data: any) => api.post('/trips/start', data),
+  // Multipart: a trip is created together with its required photographs in a
+  // single request, so a failed photo upload cannot leave a trip stranded.
+  start: (formData: FormData) =>
+    api.post('/trips/start', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
   end: (id: number, data: any) => api.put(`/trips/${id}/end`, data),
   uploadPhoto: (tripId: number, formData: FormData) =>
     api.post(`/trips/${tripId}/photos`, formData, {

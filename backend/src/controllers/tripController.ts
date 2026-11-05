@@ -102,19 +102,78 @@ export const getTripById = async (req: Request, res: Response): Promise<void> =>
  *
  * Zero is deliberately valid: a new vehicle genuinely starts there.
  */
-const isOdometerReading = (value: unknown): boolean =>
+const isOdometerReading = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
+/**
+ * The photographs a trip cannot be started without.
+ *
+ * These used to be enforced only by the driver app, which gated its Start
+ * button on them and then uploaded them one at a time AFTER the trip had been
+ * created. Any upload that failed - flaky signal, app killed, Cloudinary
+ * down - left a trip sitting in_progress with some or none of its photos, the
+ * driver looking at "Failed to start trip", and a retry blocked by "You
+ * already have an active trip". Nothing reconciled those afterwards.
+ *
+ * So the photos now arrive with the request that creates the trip, and the
+ * trip and its photos are written in one transaction: either a trip exists
+ * with its full set of photographs, or it does not exist at all.
+ */
+export const REQUIRED_START_PHOTOS = [
+  'license_plate',
+  'driver_selfie',
+  'start_odometer',
+  'passenger',
+] as const;
+
+type RequiredStartPhoto = (typeof REQUIRED_START_PHOTOS)[number];
+
+/**
+ * Stores one photo buffer and returns its URL, preferring Cloudinary and
+ * falling back to a base64 data URI so a trip can still start when Cloudinary
+ * is unreachable. Mirrors uploadTripPhoto, which does the same for end_odometer.
+ */
+const storePhoto = async (file: Express.Multer.File): Promise<string> => {
+  try {
+    return await uploadBufferToCloudinary(file.buffer, file.mimetype);
+  } catch (_cloudErr) {
+    return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+  }
+};
 
 export const startTrip = async (req: Request, res: Response): Promise<void> => {
   try {
     const driver = req.driver!;
-    const { vehicleId, startOdometer, startLatitude, startLongitude, startAddress } = req.body ?? {};
+
+    /**
+     * The scalars travel as one JSON field rather than as separate multipart
+     * fields because multipart turns every value into a string, and the
+     * validation below deliberately rejects strings: a reading of '1000' and
+     * an unparseable 'abc' are indistinguishable once coerced, and the latter
+     * used to reach the API as null. JSON.parse keeps the types the app sent.
+     */
+    let payload: Record<string, unknown>;
+    try {
+      const raw = (req.body ?? {}).payload;
+      payload = typeof raw === 'string' ? JSON.parse(raw) : (raw ?? req.body ?? {});
+    } catch (_parseErr) {
+      res.status(400).json({ error: 'Trip details were not valid JSON' });
+      return;
+    }
+
+    const { vehicleId, startOdometer, startLatitude, startLongitude, startAddress } = payload as {
+      vehicleId?: number;
+      startOdometer?: unknown;
+      startLatitude?: unknown;
+      startLongitude?: unknown;
+      startAddress?: string;
+    };
 
     // start_latitude and start_longitude became nullable so the retention job
     // can strip the location from trips past their seven-year window. That
     // relaxed the only thing stopping a live trip being created without one,
     // so the check the NOT NULL used to perform now has to happen here.
-    const isCoordinate = (value: unknown, limit: number): boolean =>
+    const isCoordinate = (value: unknown, limit: number): value is number =>
       typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= limit;
 
     if (!isCoordinate(startLatitude, 90) || !isCoordinate(startLongitude, 180)) {
@@ -124,6 +183,29 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
 
     if (!isOdometerReading(startOdometer)) {
       res.status(400).json({ error: 'A valid start odometer reading is required' });
+      return;
+    }
+
+    // Checked before any upload or write, so a request missing a photograph
+    // costs nothing and creates nothing.
+    const files = (req.files ?? {}) as Record<string, Express.Multer.File[] | undefined>;
+    const photos = {} as Record<RequiredStartPhoto, Express.Multer.File>;
+    const missing: string[] = [];
+
+    for (const photoType of REQUIRED_START_PHOTOS) {
+      const file = files[photoType]?.[0];
+      if (!file || !file.buffer?.length) {
+        missing.push(photoType);
+      } else {
+        photos[photoType] = file;
+      }
+    }
+
+    if (missing.length > 0) {
+      res.status(400).json({
+        error: `A trip cannot be started without these photographs: ${missing.join(', ')}`,
+        missingPhotos: missing,
+      });
       return;
     }
 
@@ -145,21 +227,79 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const trip = await Trip.create({
-      driverId: driver.id,
-      vehicleId,
-      startTime: new Date(),
-      startOdometer,
-      startLatitude,
-      startLongitude,
-      startAddress,
-    });
+    // Stored before the transaction opens: these are network calls to
+    // Cloudinary and holding a database transaction across them would pin a
+    // connection for their duration. A failure here has written nothing.
+    const takenAt = new Date();
+    let storedPhotos: { photoType: RequiredStartPhoto; photoUrl: string }[];
+    try {
+      storedPhotos = await Promise.all(
+        REQUIRED_START_PHOTOS.map(async (photoType) => ({
+          photoType,
+          photoUrl: await storePhoto(photos[photoType]),
+        }))
+      );
+    } catch (_storeErr) {
+      res.status(502).json({ error: 'Could not store the trip photographs. No trip was started.' });
+      return;
+    }
+
+    // One transaction, so a trip never exists without its photographs. If the
+    // photo rows fail, the trip is rolled back and the driver can simply retry
+    // rather than being locked out by an active trip they cannot see.
+    //
+    // Model.init always sets this; the guard is here so that if it is ever
+    // absent the request fails having written nothing, rather than quietly
+    // falling back to the unpaired writes this change exists to remove.
+    const sequelize = Trip.sequelize;
+    if (!sequelize) {
+      res.status(500).json({ error: 'Failed to start trip' });
+      return;
+    }
+
+    const transaction = await sequelize.transaction();
+
+    let tripId: number;
+    try {
+      const trip = await Trip.create(
+        {
+          driverId: driver.id,
+          // vehicle.id rather than the payload's vehicleId: the lookup above
+          // has already proved this one exists and is active.
+          vehicleId: vehicle.id,
+          startTime: takenAt,
+          startOdometer,
+          startLatitude,
+          startLongitude,
+          startAddress,
+        },
+        { transaction }
+      );
+
+      await TripPhoto.bulkCreate(
+        storedPhotos.map(({ photoType, photoUrl }) => ({
+          tripId: trip.id,
+          photoType,
+          photoUrl,
+          takenAt,
+        })),
+        { transaction }
+      );
+
+      await transaction.commit();
+      tripId = trip.id;
+    } catch (writeErr) {
+      // Swallowing a rollback failure keeps the original error, which is the
+      // one worth reporting.
+      await transaction.rollback().catch(() => undefined);
+      throw writeErr;
+    }
 
     // 'phone' matches getActiveTrips. The dashboard shows a Phone column for
     // every active trip, so without it a trip that arrives over the socket
     // renders a blank cell until the page is reloaded and the REST fetch -
     // which does include it - fills the gap.
-    const fullTrip = await Trip.findByPk(trip.id, {
+    const fullTrip = await Trip.findByPk(tripId, {
       include: [
         { model: Driver, as: 'driver', attributes: ['id', 'name', 'employeeId', 'phone'] },
         { model: Vehicle, as: 'vehicle', attributes: ['id', 'plateNumber', 'make', 'model'] },
