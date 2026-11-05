@@ -120,10 +120,42 @@ export default function StartTripScreen() {
 
       navigation.replace('ActiveTrip', { trip: tripRes.data });
     } catch (error: any) {
-      Alert.alert(
-        'Error',
-        error.response?.data?.error || 'Failed to start trip. No trip was started, so you can try again.'
-      );
+      /**
+       * A reply from the server means no trip exists: the start is atomic, so
+       * any 4xx or 5xx leaves nothing behind and retrying is safe.
+       *
+       * No reply is a different thing entirely. The request may well have
+       * committed with only the response lost to a timeout or a dropped
+       * connection, so telling the driver nothing was started would send them
+       * into a retry that "You already have an active trip" rejects - the very
+       * lockout this screen was changed to remove. Ask the server what it has
+       * before saying anything about it.
+       */
+      if (error.response) {
+        Alert.alert(
+          'Error',
+          error.response.data?.error || 'Failed to start trip. No trip was started, so you can try again.'
+        );
+      } else {
+        try {
+          const activeRes = await tripsApi.getActiveTrip();
+          if (activeRes.data) {
+            navigation.replace('ActiveTrip', { trip: activeRes.data });
+            return;
+          }
+          Alert.alert(
+            'Error',
+            'Could not reach the server. No trip was started, so you can try again.'
+          );
+        } catch (_lookupErr) {
+          // Still unreachable, so whether a trip started is genuinely unknown
+          // and this must not claim either way.
+          Alert.alert(
+            'Error',
+            'Could not reach the server, so it is unclear whether the trip started. Check your connection and reopen the app before trying again.'
+          );
+        }
+      }
     } finally {
       setLoading(false);
     }

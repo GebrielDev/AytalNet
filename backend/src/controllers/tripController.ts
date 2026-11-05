@@ -3,14 +3,18 @@ import { Trip, TripPhoto, Driver, Vehicle } from '../models';
 import { Op } from 'sequelize';
 import cloudinary from '../config/cloudinary';
 
-// Upload buffer to Cloudinary, returns the secure URL
-const uploadBufferToCloudinary = (buffer: Buffer, mimetype: string): Promise<string> => {
+// Upload buffer to Cloudinary. Returns the secure URL and the asset's public
+// id, which is what lets a start that fails afterwards delete what it uploaded.
+const uploadBufferToCloudinary = (
+  buffer: Buffer,
+  mimetype: string
+): Promise<{ secureUrl: string; publicId: string }> => {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       { folder: 'fleet-management/trips', resource_type: 'image' },
       (error, result) => {
         if (error || !result) return reject(error || new Error('No result'));
-        resolve(result.secure_url);
+        resolve({ secureUrl: result.secure_url, publicId: result.public_id });
       }
     );
     stream.end(buffer);
@@ -133,12 +137,48 @@ type RequiredStartPhoto = (typeof REQUIRED_START_PHOTOS)[number];
  * falling back to a base64 data URI so a trip can still start when Cloudinary
  * is unreachable. Mirrors uploadTripPhoto, which does the same for end_odometer.
  */
-const storePhoto = async (file: Express.Multer.File): Promise<string> => {
+const storePhoto = async (
+  file: Express.Multer.File
+): Promise<{ photoUrl: string; publicId: string | null }> => {
   try {
-    return await uploadBufferToCloudinary(file.buffer, file.mimetype);
+    const { secureUrl, publicId } = await uploadBufferToCloudinary(file.buffer, file.mimetype);
+    return { photoUrl: secureUrl, publicId };
   } catch (_cloudErr) {
-    return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+    // The data URI lives in the photo row itself, so there is nothing remote
+    // to clean up for one of these - hence the null id rather than a throw.
+    return {
+      photoUrl: `data:${file.mimetype};base64,${file.buffer.toString('base64')}`,
+      publicId: null,
+    };
   }
+};
+
+/**
+ * Deletes the Cloudinary assets uploaded for a start that then failed.
+ *
+ * Rolling the transaction back only undoes the database. Left alone, the
+ * images stay in Cloudinary with no trip_photos row pointing at them, and the
+ * retention job walks that table - so a driver selfie or passenger photograph
+ * would sit there permanently, outside the seven-year window the policy gives
+ * it, with nothing left that could ever find it again.
+ *
+ * Best effort on purpose: the request is already failing for a reason worth
+ * reporting, and a cleanup error must not replace it with a different one.
+ */
+const discardStoredPhotos = async (stored: { publicId: string | null }[]): Promise<void> => {
+  const publicIds = stored
+    .map(({ publicId }) => publicId)
+    .filter((publicId): publicId is string => Boolean(publicId));
+
+  await Promise.all(
+    publicIds.map(async (publicId) => {
+      try {
+        await cloudinary.uploader.destroy(publicId);
+      } catch (destroyErr) {
+        console.error('[trips] Could not remove orphaned photo', publicId, destroyErr);
+      }
+    })
+  );
 };
 
 export const startTrip = async (req: Request, res: Response): Promise<void> => {
@@ -152,14 +192,23 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
      * an unparseable 'abc' are indistinguishable once coerced, and the latter
      * used to reach the API as null. JSON.parse keeps the types the app sent.
      */
-    let payload: Record<string, unknown>;
+    let parsed: unknown;
     try {
       const raw = (req.body ?? {}).payload;
-      payload = typeof raw === 'string' ? JSON.parse(raw) : (raw ?? req.body ?? {});
+      parsed = typeof raw === 'string' ? JSON.parse(raw) : (raw ?? req.body ?? {});
     } catch (_parseErr) {
       res.status(400).json({ error: 'Trip details were not valid JSON' });
       return;
     }
+
+    // `null` is valid JSON, and destructuring it throws - which came back as a
+    // 500 rather than telling the caller what was wrong with their request.
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      res.status(400).json({ error: 'Trip details were not valid JSON' });
+      return;
+    }
+
+    const payload = parsed as Record<string, unknown>;
 
     const { vehicleId, startOdometer, startLatitude, startLongitude, startAddress } = payload as {
       vehicleId?: number;
@@ -231,15 +280,28 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
     // Cloudinary and holding a database transaction across them would pin a
     // connection for their duration. A failure here has written nothing.
     const takenAt = new Date();
-    let storedPhotos: { photoType: RequiredStartPhoto; photoUrl: string }[];
-    try {
-      storedPhotos = await Promise.all(
-        REQUIRED_START_PHOTOS.map(async (photoType) => ({
-          photoType,
-          photoUrl: await storePhoto(photos[photoType]),
-        }))
-      );
-    } catch (_storeErr) {
+    const results = await Promise.allSettled(
+      REQUIRED_START_PHOTOS.map(async (photoType) => ({
+        photoType,
+        ...(await storePhoto(photos[photoType])),
+      }))
+    );
+
+    const storedPhotos = results
+      .filter(
+        (r): r is PromiseFulfilledResult<{
+          photoType: RequiredStartPhoto;
+          photoUrl: string;
+          publicId: string | null;
+        }> => r.status === 'fulfilled'
+      )
+      .map((r) => r.value);
+
+    // allSettled rather than all: Promise.all rejects on the first failure
+    // while the others keep going, so whatever they uploaded would be stranded
+    // in Cloudinary with nothing to point at it.
+    if (storedPhotos.length !== REQUIRED_START_PHOTOS.length) {
+      await discardStoredPhotos(storedPhotos);
       res.status(502).json({ error: 'Could not store the trip photographs. No trip was started.' });
       return;
     }
@@ -253,14 +315,18 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
     // falling back to the unpaired writes this change exists to remove.
     const sequelize = Trip.sequelize;
     if (!sequelize) {
+      await discardStoredPhotos(storedPhotos);
       res.status(500).json({ error: 'Failed to start trip' });
       return;
     }
 
-    const transaction = await sequelize.transaction();
-
+    // Opening the transaction is inside the try: it can fail too, and the
+    // photos are already uploaded by this point.
     let tripId: number;
+    let transaction: Awaited<ReturnType<typeof sequelize.transaction>> | undefined;
     try {
+      transaction = await sequelize.transaction();
+
       const trip = await Trip.create(
         {
           driverId: driver.id,
@@ -289,10 +355,24 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
       await transaction.commit();
       tripId = trip.id;
     } catch (writeErr) {
-      // Swallowing a rollback failure keeps the original error, which is the
-      // one worth reporting.
-      await transaction.rollback().catch(() => undefined);
-      throw writeErr;
+      // try/catch rather than .catch(): a rollback that throws synchronously
+      // would otherwise escape this block and skip the cleanup below - and a
+      // rollback is most likely to misbehave precisely when the write just
+      // failed because the connection is gone. The original error is the one
+      // worth reporting, so a rollback problem is only logged.
+      if (transaction) {
+        try {
+          await transaction.rollback();
+        } catch (rollbackErr) {
+          console.error('[trips] Rollback failed after a failed start', rollbackErr);
+        }
+      }
+      // Nothing in the database points at the uploaded images now, so they go
+      // with the trip. Past the commit, this must never run.
+      await discardStoredPhotos(storedPhotos);
+      console.error('[trips] Start failed after photos were stored', writeErr);
+      res.status(500).json({ error: 'Failed to start trip' });
+      return;
     }
 
     // 'phone' matches getActiveTrips. The dashboard shows a Phone column for
@@ -378,7 +458,7 @@ export const uploadTripPhoto = async (req: Request, res: Response): Promise<void
     let photoUrl: string;
     try {
       // Try Cloudinary upload from memory buffer
-      photoUrl = await uploadBufferToCloudinary(file.buffer, file.mimetype);
+      photoUrl = (await uploadBufferToCloudinary(file.buffer, file.mimetype)).secureUrl;
     } catch (_cloudErr) {
       // Fallback: store as base64 data URI (works without any external service)
       const base64 = file.buffer.toString('base64');
