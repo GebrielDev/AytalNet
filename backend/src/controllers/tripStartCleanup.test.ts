@@ -149,12 +149,57 @@ describe('a start that fails does not strand photographs in Cloudinary', () => {
     expect(rollback).not.toHaveBeenCalled();
   });
 
-  it('deletes them when the commit fails', async () => {
-    commit.mockRejectedValue(new Error('commit failed'));
+  /**
+   * Raised by Codex review on #24: PostgreSQL can execute COMMIT and the
+   * connection drop before the confirmation arrives, so commit() rejects while
+   * the trip and its photo rows are durable. A failed commit is therefore an
+   * unknown outcome, and the database is asked which one happened before
+   * anything is deleted.
+   */
+  describe('when the commit reports an error', () => {
+    beforeEach(() => {
+      commit.mockRejectedValue(new Error('connection terminated'));
+    });
 
-    const res = await post();
+    it('keeps the photos and returns the trip when it was durable after all', async () => {
+      tripFindByPk.mockResolvedValue({ id: 99 });
 
-    expect(res.status).toBe(500);
+      const res = await post();
+
+      expect(res.status).toBe(201);
+      expect(destroy).not.toHaveBeenCalled();
+    });
+
+    it('deletes them when the database confirms nothing was written', async () => {
+      tripFindByPk.mockResolvedValue(null);
+
+      const res = await post();
+
+      expect(res.status).toBe(500);
+      expect(destroy).toHaveBeenCalledTimes(4);
+    });
+
+    // When the database cannot say, a possible orphan is recoverable and a
+    // live trip's deleted evidence is not, so the photos stay.
+    it('keeps them when whether it landed cannot be confirmed', async () => {
+      tripFindByPk.mockRejectedValue(new Error('still unreachable'));
+
+      const res = await post();
+
+      expect(res.status).toBe(500);
+      expect(destroy).not.toHaveBeenCalled();
+    });
+  });
+
+  // Only a failed commit is ambiguous: a failure before it means the
+  // transaction never reached COMMIT, so nothing is durable and no lookup is
+  // needed to know that.
+  it('does not look the trip up when the failure came before the commit', async () => {
+    photoBulkCreate.mockRejectedValue(new Error('insert failed'));
+
+    await post();
+
+    expect(tripFindByPk).not.toHaveBeenCalled();
     expect(destroy).toHaveBeenCalledTimes(4);
   });
 

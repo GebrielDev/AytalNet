@@ -322,7 +322,9 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
 
     // Opening the transaction is inside the try: it can fail too, and the
     // photos are already uploaded by this point.
-    let tripId: number;
+    let tripId: number | undefined;
+    let createdTripId: number | undefined;
+    let commitAttempted = false;
     let transaction: Awaited<ReturnType<typeof sequelize.transaction>> | undefined;
     try {
       transaction = await sequelize.transaction();
@@ -341,6 +343,7 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
         },
         { transaction }
       );
+      createdTripId = trip.id;
 
       await TripPhoto.bulkCreate(
         storedPhotos.map(({ photoType, photoUrl }) => ({
@@ -352,6 +355,7 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
         { transaction }
       );
 
+      commitAttempted = true;
       await transaction.commit();
       tripId = trip.id;
     } catch (writeErr) {
@@ -367,19 +371,47 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
           console.error('[trips] Rollback failed after a failed start', rollbackErr);
         }
       }
-      // Nothing in the database points at the uploaded images now, so they go
-      // with the trip. Past the commit, this must never run.
-      await discardStoredPhotos(storedPhotos);
-      console.error('[trips] Start failed after photos were stored', writeErr);
-      res.status(500).json({ error: 'Failed to start trip' });
-      return;
+      /**
+       * A failed commit is an unknown outcome, not a failure. PostgreSQL can
+       * execute COMMIT and the connection drop before the confirmation
+       * arrives, so commit() rejects while the trip and its photo rows are
+       * durable. Deleting the images then would leave a live trip whose
+       * required photographs are gone - worse than the orphaning the cleanup
+       * exists to prevent. So ask the database which happened, on a fresh
+       * read outside the dead transaction.
+       */
+      let outcome: 'committed' | 'not-committed' | 'unknown' = 'not-committed';
+      if (commitAttempted && createdTripId !== undefined) {
+        try {
+          outcome = (await Trip.findByPk(createdTripId)) ? 'committed' : 'not-committed';
+        } catch (lookupErr) {
+          outcome = 'unknown';
+          console.error('[trips] Could not confirm whether a failed commit landed', lookupErr);
+        }
+      }
+
+      if (outcome === 'committed') {
+        // The trip is real: carry on to the normal response below.
+        console.error('[trips] Commit reported an error but the trip is durable', writeErr);
+        tripId = createdTripId;
+      } else {
+        // Only delete when the database has confirmed nothing points at the
+        // images. When it cannot say, keep them: a possible orphan is
+        // recoverable, a live trip's deleted evidence is not.
+        if (outcome === 'not-committed') {
+          await discardStoredPhotos(storedPhotos);
+        }
+        console.error('[trips] Start failed after photos were stored', writeErr);
+        res.status(500).json({ error: 'Failed to start trip' });
+        return;
+      }
     }
 
     // 'phone' matches getActiveTrips. The dashboard shows a Phone column for
     // every active trip, so without it a trip that arrives over the socket
     // renders a blank cell until the page is reloaded and the REST fetch -
     // which does include it - fills the gap.
-    const fullTrip = await Trip.findByPk(tripId, {
+    const fullTrip = await Trip.findByPk(tripId!, {
       include: [
         { model: Driver, as: 'driver', attributes: ['id', 'name', 'employeeId', 'phone'] },
         { model: Vehicle, as: 'vehicle', attributes: ['id', 'plateNumber', 'make', 'model'] },

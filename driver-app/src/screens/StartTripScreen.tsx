@@ -53,6 +53,28 @@ export default function StartTripScreen() {
     }
   };
 
+  /**
+   * Asks the server for this driver's active trip, up to `attempts` times two
+   * seconds apart. Returns the trip, null when the server answered that there
+   * is none, or undefined when no attempt got an answer at all.
+   */
+  const findActiveTrip = async (attempts: number): Promise<any | null | undefined> => {
+    let answered = false;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      try {
+        const res = await tripsApi.getActiveTrip();
+        answered = true;
+        if (res.data) return res.data;
+      } catch (_lookupErr) {
+        // Keep trying; the outcome is reported once every attempt is spent.
+      }
+    }
+    return answered ? null : undefined;
+  };
+
   const startTrip = async () => {
     // Checked as a number rather than a non-empty string: "0" is a legitimate
     // reading on a new vehicle, and anything unparseable used to reach the API
@@ -121,40 +143,43 @@ export default function StartTripScreen() {
       navigation.replace('ActiveTrip', { trip: tripRes.data });
     } catch (error: any) {
       /**
-       * A reply from the server means no trip exists: the start is atomic, so
-       * any 4xx or 5xx leaves nothing behind and retrying is safe.
+       * Whatever went wrong, first find out whether a trip now exists, and if
+       * one does, take the driver to it. Two cases make that necessary:
        *
-       * No reply is a different thing entirely. The request may well have
-       * committed with only the response lost to a timeout or a dropped
-       * connection, so telling the driver nothing was started would send them
-       * into a retry that "You already have an active trip" rejects - the very
-       * lockout this screen was changed to remove. Ask the server what it has
-       * before saying anything about it.
+       * - No reply at all. The connection dropped, but the server keeps
+       *   working on a request after that - four photo uploads take seconds -
+       *   so the trip may commit after the failure reached this screen. One
+       *   immediate lookup can miss it, so look a few times.
+       * - "You already have an active trip". A retry after the case above
+       *   lands here. Showing that as an error left the driver stuck with a
+       *   trip they could not reach; opening it is the recovery.
+       *
+       * The second is what closes the lockout for good: however the timing
+       * falls, a retry now always ends on the trip.
        */
-      if (error.response) {
+      const serverReplied = Boolean(error.response);
+      const existing = await findActiveTrip(serverReplied ? 1 : 4);
+
+      if (existing) {
+        navigation.replace('ActiveTrip', { trip: existing });
+        return;
+      }
+
+      if (existing === undefined) {
+        // Every lookup failed, so whether a trip started is genuinely unknown
+        // and this must not claim either way.
+        Alert.alert(
+          'Error',
+          'Could not reach the server, so it is unclear whether the trip started. Check your connection and reopen the app before trying again.'
+        );
+      } else if (serverReplied) {
+        // The start is atomic, so a reply with an error left nothing behind.
         Alert.alert(
           'Error',
           error.response.data?.error || 'Failed to start trip. No trip was started, so you can try again.'
         );
       } else {
-        try {
-          const activeRes = await tripsApi.getActiveTrip();
-          if (activeRes.data) {
-            navigation.replace('ActiveTrip', { trip: activeRes.data });
-            return;
-          }
-          Alert.alert(
-            'Error',
-            'Could not reach the server. No trip was started, so you can try again.'
-          );
-        } catch (_lookupErr) {
-          // Still unreachable, so whether a trip started is genuinely unknown
-          // and this must not claim either way.
-          Alert.alert(
-            'Error',
-            'Could not reach the server, so it is unclear whether the trip started. Check your connection and reopen the app before trying again.'
-          );
-        }
+        Alert.alert('Error', 'Could not reach the server. No trip was started, so you can try again.');
       }
     } finally {
       setLoading(false);
