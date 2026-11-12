@@ -90,8 +90,7 @@ export default function StartTripScreen() {
       odometer.trim() === '' ||
       !licensePlatePhoto ||
       !selfiePhoto ||
-      !odometerPhoto ||
-      !passengerPhoto
+      !odometerPhoto
     ) {
       Alert.alert('Error', 'Please complete all required fields');
       return;
@@ -102,7 +101,7 @@ export default function StartTripScreen() {
       const location = await Location.getCurrentPositionAsync({});
 
       /**
-       * One request creates the trip and stores all four photographs together.
+       * One request creates the trip and stores its photographs together.
        *
        * This used to be a POST that created the trip followed by four separate
        * uploads. An upload that failed part way through left a trip in progress
@@ -136,7 +135,11 @@ export default function StartTripScreen() {
       attach('license_plate', licensePlatePhoto);
       attach('driver_selfie', selfiePhoto);
       attach('start_odometer', odometerPhoto);
-      attach('passenger', passengerPhoto);
+      // Optional: not every trip has a passenger, and a photo of one needs
+      // their knowledge. The server stores it with the trip when it is sent.
+      if (passengerPhoto) {
+        attach('passenger', passengerPhoto);
+      }
 
       const tripRes = await tripsApi.start(formData);
 
@@ -252,7 +255,7 @@ export default function StartTripScreen() {
         )}
       </TouchableOpacity>
 
-      <Text style={styles.sectionTitle}>Passenger Photo *</Text>
+      <Text style={styles.sectionTitle}>Passenger Photo (Optional)</Text>
       <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('passenger')}>
         {passengerPhoto ? (
           <Image source={{ uri: passengerPhoto }} style={styles.photoPreview} />

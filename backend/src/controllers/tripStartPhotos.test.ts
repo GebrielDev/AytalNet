@@ -27,10 +27,10 @@ vi.mock('../models', () => ({
 vi.mock('../config/cloudinary', () => ({ default: { uploader: { upload_stream: vi.fn() } } }));
 
 const buildApp = async () => {
-  const { startTrip, REQUIRED_START_PHOTOS } = await import('./tripController');
+  const { startTrip, START_PHOTO_FIELDS } = await import('./tripController');
   const app = express();
   const upload = multer({ storage: multer.memoryStorage() }).fields(
-    REQUIRED_START_PHOTOS.map((name) => ({ name, maxCount: 1 }))
+    START_PHOTO_FIELDS.map((name) => ({ name, maxCount: 1 }))
   );
   const asDriver = (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     (req as unknown as { driver: unknown }).driver = { id: 7 };
@@ -75,8 +75,8 @@ describe('a trip cannot be started without its photographs', () => {
     transaction.mockResolvedValue({ commit, rollback });
   });
 
-  it('requires the driver selfie, both odometer and passenger photos', async () => {
-    expect(allPhotos).toEqual(['license_plate', 'driver_selfie', 'start_odometer', 'passenger']);
+  it('requires the licence plate, driver selfie and start odometer photos', async () => {
+    expect(allPhotos).toEqual(['license_plate', 'driver_selfie', 'start_odometer']);
   });
 
   it('starts the trip when every photograph is present', async () => {
@@ -98,7 +98,6 @@ describe('a trip cannot be started without its photographs', () => {
     'license_plate',
     'driver_selfie',
     'start_odometer',
-    'passenger',
   ])('rejects a start with no %s photo, and creates nothing', async (omitted) => {
     const res = await post(allPhotos.filter((name) => name !== omitted));
 
@@ -107,6 +106,39 @@ describe('a trip cannot be started without its photographs', () => {
     expect(res.body.error).toContain(omitted);
     expect(tripCreate).not.toHaveBeenCalled();
     expect(photoBulkCreate).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The passenger photo is optional: not every trip carries a passenger, and
+   * photographing one needs their knowledge. A start without one is complete,
+   * and one that is sent is stored with the trip like the rest.
+   */
+  describe('the passenger photo is optional', () => {
+    it('starts the trip without one, storing only the required three', async () => {
+      const res = await post(allPhotos);
+
+      expect(res.status).toBe(201);
+      const rows = photoBulkCreate.mock.calls[0][0] as { photoType: string }[];
+      expect(rows.map((r) => r.photoType).sort()).toEqual([...allPhotos].sort());
+    });
+
+    // Driver-app build 8 always sends one; the upload middleware has to accept
+    // the field or every one of those starts would be refused.
+    it('stores one when it is sent, in the same write as the trip', async () => {
+      const res = await post([...allPhotos, 'passenger']);
+
+      expect(res.status).toBe(201);
+      expect(photoBulkCreate).toHaveBeenCalledTimes(1);
+      const rows = photoBulkCreate.mock.calls[0][0] as { photoType: string }[];
+      expect(rows.map((r) => r.photoType).sort()).toEqual([...allPhotos, 'passenger'].sort());
+    });
+
+    it('does not count it as missing when a required photo is absent', async () => {
+      const res = await post(['license_plate', 'driver_selfie']);
+
+      expect(res.status).toBe(400);
+      expect(res.body.missingPhotos).toEqual(['start_odometer']);
+    });
   });
 
   it('rejects a start with no photographs at all', async () => {

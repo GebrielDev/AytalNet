@@ -28,11 +28,11 @@ vi.mock('../models', () => ({
 vi.mock('../config/cloudinary', () => ({ default: { uploader: { upload_stream: vi.fn() } } }));
 
 const buildApp = async () => {
-  const { startTrip, endTrip, REQUIRED_START_PHOTOS } = await import('./tripController');
+  const { startTrip, endTrip, START_PHOTO_FIELDS } = await import('./tripController');
   const app = express();
   app.use(express.json());
   const upload = multer({ storage: multer.memoryStorage() }).fields(
-    REQUIRED_START_PHOTOS.map((name) => ({ name, maxCount: 1 }))
+    START_PHOTO_FIELDS.map((name) => ({ name, maxCount: 1 }))
   );
   // Stands in for authenticateToken + requireDriver, which have their own tests.
   const asDriver = (req: express.Request, _res: express.Response, next: express.NextFunction) => {

@@ -127,10 +127,25 @@ export const REQUIRED_START_PHOTOS = [
   'license_plate',
   'driver_selfie',
   'start_odometer',
-  'passenger',
 ] as const;
 
-type RequiredStartPhoto = (typeof REQUIRED_START_PHOTOS)[number];
+/**
+ * Photographs a start accepts but does not insist on. Not every trip carries
+ * a passenger, and photographing one needs their knowledge (see the privacy
+ * policy), so a start without one is complete. When one is sent it is stored
+ * in the same transaction as the trip, exactly like the required ones.
+ */
+export const OPTIONAL_START_PHOTOS = ['passenger'] as const;
+
+/**
+ * Every photo field the start route accepts. The upload middleware is built
+ * from this rather than the required list: multer rejects a field it was not
+ * told about, so a list without `passenger` would turn every start that does
+ * include one - all of driver-app build 8's - into an error.
+ */
+export const START_PHOTO_FIELDS = [...REQUIRED_START_PHOTOS, ...OPTIONAL_START_PHOTOS] as const;
+
+type StartPhoto = (typeof START_PHOTO_FIELDS)[number];
 
 /**
  * Stores one photo buffer and returns its URL, preferring Cloudinary and
@@ -238,7 +253,7 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
     // Checked before any upload or write, so a request missing a photograph
     // costs nothing and creates nothing.
     const files = (req.files ?? {}) as Record<string, Express.Multer.File[] | undefined>;
-    const photos = {} as Record<RequiredStartPhoto, Express.Multer.File>;
+    const photos: { photoType: StartPhoto; file: Express.Multer.File }[] = [];
     const missing: string[] = [];
 
     for (const photoType of REQUIRED_START_PHOTOS) {
@@ -246,7 +261,16 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
       if (!file || !file.buffer?.length) {
         missing.push(photoType);
       } else {
-        photos[photoType] = file;
+        photos.push({ photoType, file });
+      }
+    }
+
+    // An optional photo that arrives empty is treated as not sent rather than
+    // rejected: it adds nothing, and it is no reason to refuse the trip.
+    for (const photoType of OPTIONAL_START_PHOTOS) {
+      const file = files[photoType]?.[0];
+      if (file?.buffer?.length) {
+        photos.push({ photoType, file });
       }
     }
 
@@ -281,16 +305,16 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
     // connection for their duration. A failure here has written nothing.
     const takenAt = new Date();
     const results = await Promise.allSettled(
-      REQUIRED_START_PHOTOS.map(async (photoType) => ({
+      photos.map(async ({ photoType, file }) => ({
         photoType,
-        ...(await storePhoto(photos[photoType])),
+        ...(await storePhoto(file)),
       }))
     );
 
     const storedPhotos = results
       .filter(
         (r): r is PromiseFulfilledResult<{
-          photoType: RequiredStartPhoto;
+          photoType: StartPhoto;
           photoUrl: string;
           publicId: string | null;
         }> => r.status === 'fulfilled'
@@ -300,7 +324,7 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
     // allSettled rather than all: Promise.all rejects on the first failure
     // while the others keep going, so whatever they uploaded would be stranded
     // in Cloudinary with nothing to point at it.
-    if (storedPhotos.length !== REQUIRED_START_PHOTOS.length) {
+    if (storedPhotos.length !== photos.length) {
       await discardStoredPhotos(storedPhotos);
       res.status(502).json({ error: 'Could not store the trip photographs. No trip was started.' });
       return;
