@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getAllTrips, getActiveTrips, getTripById, startTrip, endTrip, uploadTripPhoto, getDriverActiveTrip, getDriverTrips, cancelTrip, REQUIRED_START_PHOTOS } from '../controllers/tripController';
+import { getAllTrips, getActiveTrips, getTripById, startTrip, endTrip, uploadTripPhoto, getDriverActiveTrip, getDriverTrips, cancelTrip, START_PHOTO_FIELDS } from '../controllers/tripController';
 import { authenticateToken, requireUser, requireDriver } from '../middleware/auth';
 import multer from 'multer';
 
@@ -10,19 +10,19 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 
 /**
  * Starting a trip carries its required photographs in the same request, so the
- * trip and its photos can be written together - see REQUIRED_START_PHOTOS.
+ * trip and its photos can be written together - see START_PHOTO_FIELDS.
  * Images only here: these files are stored as a Cloudinary asset or, when that
  * is unreachable, inlined into photo_url as a base64 data URI, and neither is
  * somewhere to put an arbitrary upload.
  */
 const startPhotoUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024, files: REQUIRED_START_PHOTOS.length },
+  limits: { fileSize: 10 * 1024 * 1024, files: START_PHOTO_FIELDS.length },
   fileFilter: (_req, file, cb) => {
     const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     cb(null, allowed.includes(file.mimetype));
   },
-}).fields(REQUIRED_START_PHOTOS.map((name) => ({ name, maxCount: 1 })));
+}).fields(START_PHOTO_FIELDS.map((name) => ({ name, maxCount: 1 })));
 
 // Driver routes
 router.post('/start', authenticateToken, requireDriver, startPhotoUpload, startTrip);

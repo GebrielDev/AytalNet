@@ -58,10 +58,10 @@ const cloudinaryUploads = (succeed: number) => {
 };
 
 const buildApp = async () => {
-  const { startTrip, REQUIRED_START_PHOTOS } = await import('./tripController');
+  const { startTrip, START_PHOTO_FIELDS } = await import('./tripController');
   const app = express();
   const upload = multer({ storage: multer.memoryStorage() }).fields(
-    REQUIRED_START_PHOTOS.map((name) => ({ name, maxCount: 1 }))
+    START_PHOTO_FIELDS.map((name) => ({ name, maxCount: 1 }))
   );
   const asDriver = (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     (req as unknown as { driver: unknown }).driver = { id: 7 };
@@ -77,11 +77,13 @@ const payload = {
 };
 
 const post = async (raw?: string) => {
-  const { REQUIRED_START_PHOTOS } = await import('./tripController');
+  // All four, the optional passenger photo included, so a failed start has
+  // four assets to clean up.
+  const { START_PHOTO_FIELDS } = await import('./tripController');
   let req = request(await buildApp())
     .post('/trips/start')
     .field('payload', raw ?? JSON.stringify(payload));
-  for (const name of REQUIRED_START_PHOTOS) {
+  for (const name of START_PHOTO_FIELDS) {
     req = req.attach(name, Buffer.from('fake-jpeg-bytes'), `${name}.jpg`);
   }
   return req;
