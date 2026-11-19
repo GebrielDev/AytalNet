@@ -23,11 +23,15 @@ interface DriverAttributes {
   destinationAddress?: string | null;
   destinationNote?: string | null;
   destinationUpdatedAt?: Date | null;
+  // Where the address sits on the map (OpenStreetMap lookup), used for the
+  // arrival check. Null when the address could not be found.
+  destinationLatitude?: number | null;
+  destinationLongitude?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface DriverCreationAttributes extends Optional<DriverAttributes, 'id' | 'status' | 'assignedVehicleId' | 'deactivatedAt' | 'destinationAddress' | 'destinationNote' | 'destinationUpdatedAt' | 'createdAt' | 'updatedAt'> {}
+interface DriverCreationAttributes extends Optional<DriverAttributes, 'id' | 'status' | 'assignedVehicleId' | 'deactivatedAt' | 'destinationAddress' | 'destinationNote' | 'destinationUpdatedAt' | 'destinationLatitude' | 'destinationLongitude' | 'createdAt' | 'updatedAt'> {}
 
 class Driver extends Model<DriverAttributes, DriverCreationAttributes> implements DriverAttributes {
   public id!: number;
@@ -43,6 +47,8 @@ class Driver extends Model<DriverAttributes, DriverCreationAttributes> implement
   public destinationAddress?: string | null;
   public destinationNote?: string | null;
   public destinationUpdatedAt?: Date | null;
+  public destinationLatitude?: number | null;
+  public destinationLongitude?: number | null;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 
@@ -127,6 +133,16 @@ Driver.init(
       type: DataTypes.DATE,
       allowNull: true,
       field: 'destination_updated_at',
+    },
+    destinationLatitude: {
+      type: DataTypes.DECIMAL(10, 7),
+      allowNull: true,
+      field: 'destination_latitude',
+    },
+    destinationLongitude: {
+      type: DataTypes.DECIMAL(10, 7),
+      allowNull: true,
+      field: 'destination_longitude',
     },
   },
   {

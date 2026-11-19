@@ -31,6 +31,11 @@ a Node/Express/PostgreSQL backend on Railway, a React web dashboard, and an Expo
 - 2026-06: Alert recipients. Admins can switch late trip alerts on or off for each user on the Users page (`users.late_trip_alerts`).
 - 2026-06: Signal coverage map. A dashboard Coverage page (Leaflet/OpenStreetMap) uses `GET /api/trips/offline-locations`.
 
+- 2026-06: Live destination updates. A socket.io `/driver` namespace (driver tokens only, room `driver:<id>`) pushes `destination:updated`, and the app listens in liveUpdates.ts.
+- 2026-06: Destination history. Trips record destinationAddress, note and coordinates at start; the app sends the address it showed.
+- 2026-06: Arrival check. Destinations are looked up on OpenStreetMap (Nominatim) when saved. At trip end the server stores endDistanceMeters and arrivedAtDestination (within `ARRIVAL_RADIUS_METERS`, 300 by default). The dashboard shows a badge and an Arrival row.
+- 2026-06: Coverage export. The Coverage page has a "Download spreadsheet" CSV button.
+
 ## Known limits
 - The preview test copy (Postgres plus the supervisor program) is lost when the container restarts and has to be set up again.
 - The live server needs this backend deployed to Railway, with `PHOTO_STORAGE=emergent`, `EMERGENT_LLM_KEY` and `PUBLIC_API_URL`, before the new app build ships.

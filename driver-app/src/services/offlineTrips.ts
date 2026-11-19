@@ -39,6 +39,8 @@ export interface QueuedStart {
   startOdometer: number;
   startLatitude: number;
   startLongitude: number;
+  // The destination the app showed when Start was pressed, recorded with the trip.
+  destinationAddress?: string | null;
   photos: Partial<Record<StartPhotoType, string>>;
   error?: string;
 }
@@ -163,6 +165,7 @@ const sendStart = async (item: QueuedStart): Promise<any> => {
       startLongitude: item.startLongitude,
       clientRef: item.clientRef,
       startedAt: item.startedAt,
+      ...(item.destinationAddress !== undefined ? { destinationAddress: item.destinationAddress } : {}),
     })
   );
   for (const [photoType, uri] of Object.entries(item.photos)) {
@@ -355,8 +358,29 @@ const cachedRead = async <T>(key: string, read: () => Promise<T>, fallback: T): 
   }
 };
 
+const destinationListeners = new Set<(destination: any | null) => void>();
+
+/** Screens showing the destination re-render when it changes. */
+export const subscribeToDestination = (listener: (destination: any | null) => void): (() => void) => {
+  destinationListeners.add(listener);
+  return () => destinationListeners.delete(listener);
+};
+
+/** A destination pushed live by the server: saved for offline, then shown. */
+export const setDestinationLocal = async (destination: any | null): Promise<void> => {
+  await writeJson(DESTINATION_KEY, destination);
+  destinationListeners.forEach((listener) => listener(destination));
+};
+
+/** The destination saved on the phone (kept current by the live socket). No network. */
+export const getSavedDestination = () => readJson<any>(DESTINATION_KEY, null);
+
 // Kept on the phone so the destination still shows with no signal.
-export const getDestination = () => cachedRead<any>(DESTINATION_KEY, async () => (await vehiclesApi.getMyDestination()).data, null);
+export const getDestination = async () => {
+  const destination = await cachedRead<any>(DESTINATION_KEY, async () => (await vehiclesApi.getMyDestination()).data, null);
+  destinationListeners.forEach((listener) => listener(destination));
+  return destination;
+};
 
 export const getAssignedVehicle = () => cachedRead(VEHICLE_KEY, async () => (await vehiclesApi.getMyAssigned()).data, null);
 

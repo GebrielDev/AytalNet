@@ -8,7 +8,7 @@ import { assertAuthSecrets } from './config/auth';
 import { allowedOrigins, isOriginAllowed } from './config/cors';
 import routes from './routes';
 import { ApiError, errorHandler, notFound } from './middleware/errorHandler';
-import { configureDashboardSocket } from './socket';
+import { configureDashboardSocket, configureDriverSocket } from './socket';
 
 dotenv.config();
 
@@ -25,6 +25,7 @@ const io = new Server(server, {
 
 // Handshake, per-user rooms and token-expiry handling live in ./socket.
 configureDashboardSocket(io);
+configureDriverSocket(io);
 
 // Make io available in routes
 app.set('io', io);

@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { Server, Socket } from 'socket.io';
 import { authConfig } from './config/auth';
-import { User } from './models';
+import { User, Driver } from './models';
 
 /**
  * Everything that governs the dashboard socket namespace lives here rather than
@@ -118,5 +118,54 @@ const onDashboardConnection = (socket: Socket): void => {
 export const configureDashboardSocket = (io: Server): Server => {
   io.use(authenticateDashboardSocket);
   io.on('connection', onDashboardConnection);
+  return io;
+};
+
+/**
+ * The driver app's namespace (/driver), kept apart from the dashboard feed so
+ * a driver token can never join the 'dashboard' room. A driver socket only
+ * joins its own room and only receives what is addressed to that driver,
+ * today the destination the dispatcher sets.
+ */
+export const driverRoom = (driverId: number | string): string => `driver:${driverId}`;
+
+export const authenticateDriverSocket = async (socket: Socket, next: (err?: Error) => void): Promise<void> => {
+  const token = socket.handshake.auth?.token;
+  if (!token) {
+    next(new Error('Authentication required'));
+    return;
+  }
+  try {
+    const decoded = jwt.verify(token, authConfig.jwtSecret) as { id: number; type?: string; exp?: number };
+    if (decoded.type !== 'driver') {
+      next(new Error('Driver access only'));
+      return;
+    }
+    const driver = await Driver.findByPk(decoded.id);
+    if (!driver || driver.status !== 'active') {
+      next(new Error('Driver not found'));
+      return;
+    }
+    socket.data.driverId = decoded.id;
+    socket.data.tokenExp = decoded.exp;
+    next();
+  } catch {
+    next(new Error('Invalid token'));
+  }
+};
+
+const onDriverConnection = (socket: Socket): void => {
+  socket.join(driverRoom(socket.data.driverId));
+  // Same bound as the dashboard: closed at token expiry, the app reconnects
+  // with a fresh token.
+  const exp = socket.data.tokenExp as number | undefined;
+  const timer = setTimeout(() => socket.disconnect(true), Math.max(0, exp ? exp * 1000 - Date.now() : 0));
+  socket.on('disconnect', () => clearTimeout(timer));
+};
+
+export const configureDriverSocket = (io: Server): Server => {
+  const nsp = io.of('/driver');
+  nsp.use(authenticateDriverSocket);
+  nsp.on('connection', onDriverConnection);
   return io;
 };

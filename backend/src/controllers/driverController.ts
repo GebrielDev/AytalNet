@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { Driver, Trip, Vehicle } from '../models';
 import { Op } from 'sequelize';
+import { geocodeAddress } from '../services/geo';
+import { driverRoom } from '../socket';
 
 export const getAllDrivers = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -194,16 +196,33 @@ export const setDriverDestination = async (req: Request, res: Response): Promise
       return;
     }
     const cleanAddress = (address ?? '').trim().slice(0, 500);
+    // Looked up only when the address changes; a note edit keeps the position.
+    const point =
+      !cleanAddress ? null
+      : cleanAddress === driver.destinationAddress && driver.destinationLatitude != null
+        ? { latitude: Number(driver.destinationLatitude), longitude: Number(driver.destinationLongitude) }
+        : await geocodeAddress(cleanAddress);
     await driver.update({
       destinationAddress: cleanAddress || null,
       destinationNote: cleanAddress ? (note ?? '').trim().slice(0, 500) || null : null,
       destinationUpdatedAt: cleanAddress ? new Date() : null,
+      destinationLatitude: point?.latitude ?? null,
+      destinationLongitude: point?.longitude ?? null,
     });
+
+    // Pushed to the driver's phone straight away if the app is open.
+    const forApp = cleanAddress
+      ? { address: driver.destinationAddress, note: driver.destinationNote, updatedAt: driver.destinationUpdatedAt }
+      : null;
+    req.app.get('io')?.of('/driver').to(driverRoom(driver.id)).emit('destination:updated', forApp);
+
     res.json({
       id: driver.id,
       destinationAddress: driver.destinationAddress,
       destinationNote: driver.destinationNote,
       destinationUpdatedAt: driver.destinationUpdatedAt,
+      // False tells the dashboard the arrival check cannot run for this address.
+      destinationFound: cleanAddress ? point != null : null,
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to set destination' });

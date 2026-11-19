@@ -28,6 +28,32 @@ interface Trip {
   createdAt?: string;
   endReceivedAt?: string;
   clientRef?: string | null;
+  destinationAddress?: string | null;
+  destinationNote?: string | null;
+  endDistanceMeters?: number | null;
+  arrivedAtDestination?: boolean | null;
+}
+
+const formatDistance = (m: number) => (m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1)} km`);
+
+/** Arrival check result for a completed trip that had a destination. */
+const arrivalText = (trip: Trip): string | null => {
+  if (!trip.destinationAddress || trip.status !== 'completed') return null;
+  if (trip.arrivedAtDestination == null || trip.endDistanceMeters == null) return 'Unknown (address not found on the map, or no end location)';
+  return trip.arrivedAtDestination
+    ? `Arrived (ended ${formatDistance(trip.endDistanceMeters)} from the destination)`
+    : `Not at destination (ended ${formatDistance(trip.endDistanceMeters)} away)`;
+};
+
+function ArrivalBadge({ trip }: { trip: Trip }) {
+  if (!trip.destinationAddress || trip.status !== 'completed' || trip.arrivedAtDestination == null) return null;
+  return trip.arrivedAtDestination ? (
+    <span data-testid={`trip-arrived-badge-${trip.id}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 whitespace-nowrap">Arrived</span>
+  ) : (
+    <span data-testid={`trip-not-arrived-badge-${trip.id}`} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 whitespace-nowrap">
+      Ended {formatDistance(trip.endDistanceMeters ?? 0)} away
+    </span>
+  );
 }
 
 // Matches LATE_ARRIVAL_MINUTES on the server: a start or end that reached the
@@ -188,6 +214,7 @@ export default function Trips() {
                     <div className="flex flex-col items-start gap-1">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(trip.status)}`}>{trip.status.replace(/_/g, ' ')}</span>
                       <OfflineBadge trip={trip} />
+                      <ArrivalBadge trip={trip} />
                     </div>
                   </td>
                   <td className="px-5 py-3.5 text-sm space-x-2">
@@ -224,6 +251,7 @@ export default function Trips() {
               <div className="flex flex-col items-end gap-1">
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(trip.status)}`}>{trip.status.replace(/_/g, ' ')}</span>
                 <OfflineBadge trip={trip} />
+                <ArrivalBadge trip={trip} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
@@ -271,6 +299,10 @@ export default function Trips() {
                   ['Total Mileage', selectedTrip.totalMileage ? `${selectedTrip.totalMileage} mi` : '-'],
                   ['Start Time', new Date(selectedTrip.startTime).toLocaleString()],
                   ...(selectedTrip.endTime ? [['End Time', new Date(selectedTrip.endTime).toLocaleString()]] : []),
+                  ...(selectedTrip.destinationAddress
+                    ? [['Destination', selectedTrip.destinationAddress + (selectedTrip.destinationNote ? ` (${selectedTrip.destinationNote})` : '')]]
+                    : []),
+                  ...(arrivalText(selectedTrip) ? [['Arrival', arrivalText(selectedTrip)!]] : []),
                   ...(offlineInfo(selectedTrip)?.startLate != null && selectedTrip.createdAt
                     ? [['Start reached office', `${new Date(selectedTrip.createdAt).toLocaleString()} (recorded offline, ${formatLate(offlineInfo(selectedTrip)!.startLate!)} later)`]]
                     : []),

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, ScrollView } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import DestinationCard, { type Destination } from '../components/DestinationCard';
-import { getDestination } from '../services/offlineTrips';
+import { getDestination, subscribeToDestination } from '../services/offlineTrips';
 
 export default function ActiveTripScreen() {
   const navigation = useNavigation<any>();
@@ -14,6 +14,7 @@ export default function ActiveTripScreen() {
 
   useEffect(() => {
     getDestination().then(setDestination);
+    return subscribeToDestination(setDestination);
   }, []);
 
   useEffect(() => {

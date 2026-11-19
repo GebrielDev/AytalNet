@@ -30,11 +30,19 @@ interface TripAttributes {
   // When the end reached the server. Far after endTime means it was recorded
   // offline; created_at plays the same part for the start.
   endReceivedAt?: Date;
+  // Where the dispatcher had sent the driver when the trip started, and
+  // whether the trip ended there (within ARRIVAL_RADIUS_METERS).
+  destinationAddress?: string | null;
+  destinationNote?: string | null;
+  destinationLatitude?: number | null;
+  destinationLongitude?: number | null;
+  endDistanceMeters?: number | null;
+  arrivedAtDestination?: boolean | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface TripCreationAttributes extends Optional<TripAttributes, 'id' | 'status' | 'endTime' | 'durationMinutes' | 'endOdometer' | 'totalMileage' | 'startAddress' | 'endLatitude' | 'endLongitude' | 'endAddress' | 'clientRef' | 'endReceivedAt' | 'createdAt' | 'updatedAt'> {}
+interface TripCreationAttributes extends Optional<TripAttributes, 'id' | 'status' | 'endTime' | 'durationMinutes' | 'endOdometer' | 'totalMileage' | 'startAddress' | 'endLatitude' | 'endLongitude' | 'endAddress' | 'clientRef' | 'endReceivedAt' | 'destinationAddress' | 'destinationNote' | 'destinationLatitude' | 'destinationLongitude' | 'endDistanceMeters' | 'arrivedAtDestination' | 'createdAt' | 'updatedAt'> {}
 
 class Trip extends Model<TripAttributes, TripCreationAttributes> implements TripAttributes {
   public id!: number;
@@ -55,6 +63,12 @@ class Trip extends Model<TripAttributes, TripCreationAttributes> implements Trip
   public endAddress?: string;
   public clientRef?: string | null;
   public endReceivedAt?: Date;
+  public destinationAddress?: string | null;
+  public destinationNote?: string | null;
+  public destinationLatitude?: number | null;
+  public destinationLongitude?: number | null;
+  public endDistanceMeters?: number | null;
+  public arrivedAtDestination?: boolean | null;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -144,6 +158,12 @@ Trip.init(
       allowNull: true,
       field: 'end_received_at',
     },
+    destinationAddress: { type: DataTypes.STRING(500), allowNull: true, field: 'destination_address' },
+    destinationNote: { type: DataTypes.STRING(500), allowNull: true, field: 'destination_note' },
+    destinationLatitude: { type: DataTypes.DECIMAL(10, 7), allowNull: true, field: 'destination_latitude' },
+    destinationLongitude: { type: DataTypes.DECIMAL(10, 7), allowNull: true, field: 'destination_longitude' },
+    endDistanceMeters: { type: DataTypes.INTEGER, allowNull: true, field: 'end_distance_meters' },
+    arrivedAtDestination: { type: DataTypes.BOOLEAN, allowNull: true, field: 'arrived_at_destination' },
   },
   {
     sequelize,

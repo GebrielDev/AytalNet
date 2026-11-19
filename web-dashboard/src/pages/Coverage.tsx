@@ -58,6 +58,30 @@ export default function Coverage() {
       .finally(() => setLoading(false));
   }, [range]);
 
+  // A spreadsheet for clients: opens in Excel, Numbers or Google Sheets.
+  const exportCsv = () => {
+    // Text starting with = + - @ is prefixed so a spreadsheet never runs it as a formula.
+    const cell = (v: unknown) => {
+      const text = typeof v === 'number' ? String(v) : String(v ?? '').replace(/^([=+\-@])/, "'$1");
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+    const rows = [
+      ['Trip', 'Driver', 'Vehicle', 'Part', 'Recorded at', 'Minutes until it reached the office', 'Latitude', 'Longitude', 'Map link'],
+      ...points.map((p) => [
+        p.tripId, p.driver, p.plate, p.part === 'start' ? 'Start' : 'End', new Date(p.at).toLocaleString(), p.minutesLate,
+        p.latitude, p.longitude, `https://www.google.com/maps?q=${p.latitude},${p.longitude}`,
+      ]),
+    ];
+    // BOM so Excel reads the file as UTF-8 (driver names with accents).
+    const blob = new Blob(['\ufeff' + rows.map((r) => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `no-signal-locations${range.startDate ? '-from-' + range.startDate : ''}${range.endDate ? '-to-' + range.endDate : ''}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const tripCount = useMemo(() => new Set(points.map((p) => p.tripId)).size, [points]);
 
   return (
@@ -76,6 +100,14 @@ export default function Coverage() {
           <label className="block text-xs font-medium text-gray-500 mb-1">To</label>
           <input data-testid="coverage-to" type="date" value={range.endDate} onChange={(e) => setRange({ ...range, endDate: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" />
         </div>
+        <button
+          data-testid="coverage-export-button"
+          onClick={exportCsv}
+          disabled={loading || points.length === 0}
+          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-40"
+        >
+          Download spreadsheet
+        </button>
         <p className="text-sm text-gray-600 px-2 py-2" data-testid="coverage-summary">
           {loading ? 'Loading…' : `${points.length} no-signal point${points.length === 1 ? '' : 's'} from ${tripCount} trip${tripCount === 1 ? '' : 's'}`}
         </p>

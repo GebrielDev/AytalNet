@@ -1,0 +1,42 @@
+{
+  "summary": "Round 5 tested end to end: live destination updates, destination history, the arrival check, the address-not-found warning and the coverage CSV export. Everything requested works. Backend: 6 of 6 new pytest checks pass. The socket script passes all its checks. vitest passes 157 of 157 and the typecheck is clean. Live updates in the driver app (Maria, Home, 375x667): an admin PUT changes the destination-address and destination-note text in about 0.6 s with no navigation or reload. Clearing the note removes destination-note, clearing the address removes destination-card, and restoring brings it back. The /driver namespace refuses a dashboard token with 'Driver access only', a bad token with 'Invalid token' and a driver token on / with the dashboard-only error. Admin still connects on /. James's socket did not receive Maria's update. Trips: with a matching address, the trip gets the address, note 'Terminal 4' and coordinates; it ended 111 m away, so arrived=true (persisted, checked with GET). With no destinationAddress key the current destination is copied; that trip ended 5004 m away, so arrived=false. A different address is stored with null coordinates and null note, giving arrived=null and distance=null. An empty address stores no destination. Trip #17 is arrived=true at 93 m. Dashboard Trips page: green Arrived badges on #17 and #18 (bg rgb(220,252,231), text rgb(22,101,52)); #19 shows 'Ended 5.0 km away'; #20 and #21 have no badge. The View modal Destination/Arrival rows are correct for Arrived, Not at destination and Unknown, and #21 has neither row. Drivers modal (Sarah): 'zzqx nowhere 99999 qqq' shows destination-not-found, saves and the modal stays open. Sky Harbor closes the modal, and Clear resets the row to 'Set destination'. Coverage: 'Download spreadsheet' downloads no-signal-locations.csv with a UTF-8 BOM, the exact 9-column header and 3 rows that match the 3 map markers. The button is disabled with 0 points (2000-01-01..02). No functional failures. Code review found a few risks, listed below.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/drivers/:id/destination (existing data)", "issue": "John (id 1) has '2 N Central Ave, Phoenix, AZ' with destination_latitude/longitude NULL. It was set before geocoding existed and was never backfilled. Nominatim resolves this address today (33.4485656,-112.0742189), but John's trips will always get arrived=null until a dispatcher re-saves the address. There is no backfill or migration for destinations saved before this round."},
+      {"endpoint": "services/geo.ts geocodeAddress", "issue": "A transient Nominatim failure (429, timeout or 5xx) returns null, the same as 'not found'. The dashboard then shows the 'address wasn't found' warning for a valid address, and the destination is saved with no coordinates. Nothing retries later, and there is no throttle or cache, while Nominatim's policy allows about 1 request per second."},
+      {"endpoint": "Arrival check design", "issue": "The trip copies its destination at start. If the dispatcher reroutes the driver mid-trip (a live update), the arrival check still compares against the old destination, so the trip shows 'Ended X away' even when the driver reached the new one. Decide whether this is intended."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Driver app Start Trip (offline-first)", "issue": "StartTripScreen.tsx:90 awaits getDestination(), a network GET /drivers/my-destination, before submitStart. The axios client has no timeout (services/api.ts), so with weak but present signal the start can hang until the TCP request fails, which breaks the 'saved on the phone first' guarantee. Also, if that GET returns any HTTP error (5xx), cachedRead returns null: the trip is sent with destinationAddress:null, so the trip records NO destination, and the listeners receive null, so the destination card disappears from Home and ActiveTrip. Suggested fix: read the cached destination (DESTINATION_KEY, which the socket keeps current) instead of fetching, and do not overwrite the cache or listeners with null on a server error.", "affected_testIDs": ["destination-card"]}
+    ],
+    "design_issues": [
+      {"screen": "Dashboard DestinationModal", "issues": ["The not-found text says 'arrival can't be checked for this trip', but the modal is about the driver's destination, not a trip. 'for trips to this address' would be clearer. After a save that is not found, the buttons still read Cancel/Save even though it is already saved; 'Close' would be clearer."]},
+      {"screen": "Dashboard Trips View modal", "issues": ["The close (X) button has no data-testid or aria-label, and Escape does not close the modal."]},
+      {"screen": "Coverage CSV", "issues": ["'Recorded at' uses toLocaleString(), so the format depends on the browser locale. An ISO or fixed format would sort and filter better in Excel. URL.revokeObjectURL runs synchronously right after a.click() without the anchor being appended, which can cancel the download in some Safari and Firefox versions; deferring with setTimeout is safer. Values are not guarded against CSV/formula injection (a driver name starting with = + - @)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/regression/test_round5_arrival.py", "/app/test_reports/regression/socket_round5.cjs", "/app/test_reports/pytest/round5.xml"],
+  "action_items": [
+    "Driver app StartTripScreen: use the cached destination instead of awaiting the network getDestination(), or add a short timeout. Do not clear the destination (trip payload, cache, listeners) when /drivers/my-destination returns an error.",
+    "Backfill coordinates for destinations saved before geocoding existed (John id 1 has none), or geocode lazily when coordinates are missing.",
+    "Tell 'Nominatim unreachable or rate-limited' apart from 'not found' (return a different flag or retry later), and add a simple cache or throttle.",
+    "Optional: decide what a mid-trip destination change should do to the arrival check. Add data-testid and aria-label to the Trips modal close button. Make the CSV date format locale-independent and defer revokeObjectURL."
+  ],
+  "critical_code_review_comments": [
+    "tripController.ts is 796 lines, over the 700-line guideline; consider splitting the destination/arrival and offline-locations helpers into their own modules.",
+    "The driver socket checks driver.status only at handshake. A deactivated driver keeps receiving their own destination updates until the token expires (at most 1 h). This is low impact because it is only their own data.",
+    "No deprecated Expo packages (expo-av, expo-barcode-scanner, expo-background-fetch) in driver-app/package.json."
+  ],
+  "updated_files": ["/app/test_reports/regression/test_round5_arrival.py", "/app/test_reports/regression/socket_round5.cjs"],
+  "success_rate": {"backend": "100% (6/6 pytest + 9/9 socket checks + vitest 157/157 + typecheck)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Test trips #18, #19 and #20 (Maria, vehicle 2) and #21 (James, vehicle 3) were created and all ended; there is no active trip from me. They raised vehicle 2's and 3's current_odometer by about 8 mi each and appear in Maria's and James's Completed Trips. They were left in place because they back the dashboard badge checks (#18 Arrived, #19 5.0 km away, #20 no coordinates). Sarah's (id 4) test destinations were cleared. Maria's destination was restored to Sky Harbor / 'Terminal 4' with coordinates. John's destination was untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Python urllib requests get 403 from the preview ingress; use the requests lib or page.request inside Playwright. Login returns accessToken. Run socket tests with: cd /tmp && BASE=<origin without /api> node /app/test_reports/regression/socket_round5.cjs (it uses backend/node_modules/socket.io-client and restores Maria's note to Terminal 4). Arrival pytest: API_BASE=<origin>/api pytest /app/test_reports/regression/test_round5_arrival.py; each run creates 4 completed trips. The dashboard login page has no testIDs (use input[type=email]/[type=password], button[type=submit]). In the Trips modal, close with 'div.fixed button' (first).",
+  "rca_of_issue": ""
+}

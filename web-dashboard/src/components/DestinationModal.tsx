@@ -18,6 +18,7 @@ export default function DestinationModal({
   const [note, setNote] = useState(driver.destinationNote ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -29,8 +30,13 @@ export default function DestinationModal({
     setSaving(true);
     setError('');
     try {
-      await driversApi.setDestination(driver.id, clear ? '' : address, clear ? '' : note);
+      const res = await driversApi.setDestination(driver.id, clear ? '' : address, clear ? '' : note);
       onSaved();
+      if (res.data?.destinationFound === false) {
+        // Saved and navigable, but the arrival check needs a map position.
+        setNotFound(true);
+        return;
+      }
       onClose();
     } catch (e: any) {
       setError(e.response?.data?.error || 'Could not save the destination');
@@ -67,6 +73,12 @@ export default function DestinationModal({
           />
         </div>
         {error && <p className="text-sm text-red-600" data-testid="destination-error">{error}</p>}
+        {notFound && (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3" data-testid="destination-not-found">
+            Saved and sent to the driver, but this address wasn't found on the map, so arrival can't be checked for this trip.
+            Add the city and state (or ZIP) to fix it, or close this window.
+          </p>
+        )}
         <div className="flex justify-between gap-2 pt-2">
           {driver.destinationAddress ? (
             <button data-testid="destination-clear-button" disabled={saving} onClick={() => save(true)} className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg">

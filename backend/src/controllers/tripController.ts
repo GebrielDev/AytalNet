@@ -9,6 +9,7 @@ export const LATE_ARRIVAL_MINUTES = 5;
 import cloudinary from '../config/cloudinary';
 import { usesEmergentStorage, storePhotoInEmergent, erasePhoto } from '../config/photoStorage';
 import { sendLateTripAlert, isLateForAlert } from '../services/lateTripAlerts';
+import { distanceMeters, arrivalRadiusMeters } from '../services/geo';
 
 /**
  * Trips recorded offline arrive later, carrying the time the driver actually
@@ -330,6 +331,28 @@ const discardStoredPhotos = async (stored: StoredPhoto[]): Promise<void> => {
   ]);
 };
 
+/**
+ * The destination a new trip records: what the driver app showed when the
+ * driver pressed Start. An offline start can arrive after the dispatcher has
+ * changed it, so the app sends the address it showed; the map position is
+ * copied only when that is still the driver's current destination (otherwise
+ * the arrival check reports "unknown" rather than measuring against the wrong
+ * place). Older apps send nothing, and get the driver's current destination.
+ */
+const tripDestination = (driver: any, payload: any) => {
+  const current = {
+    destinationAddress: driver.destinationAddress ?? null,
+    destinationNote: driver.destinationNote ?? null,
+    destinationLatitude: driver.destinationLatitude ?? null,
+    destinationLongitude: driver.destinationLongitude ?? null,
+  };
+  if (!payload || !('destinationAddress' in payload)) return current;
+  const shown = typeof payload.destinationAddress === 'string' ? payload.destinationAddress.trim().slice(0, 500) : '';
+  if (!shown) return { destinationAddress: null, destinationNote: null, destinationLatitude: null, destinationLongitude: null };
+  if (shown === current.destinationAddress) return current;
+  return { destinationAddress: shown, destinationNote: null, destinationLatitude: null, destinationLongitude: null };
+};
+
 export const startTrip = async (req: Request, res: Response): Promise<void> => {
   try {
     const driver = req.driver!;
@@ -517,6 +540,7 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
           startLongitude,
           startAddress,
           clientRef: ref,
+          ...tripDestination(driver, payload),
         },
         { transaction }
       );
@@ -650,7 +674,15 @@ export const endTrip = async (req: Request, res: Response): Promise<void> => {
     const durationMinutes = Math.round((endTime.getTime() - trip.startTime.getTime()) / 60000);
     const totalMileage = endOdometer - Number(trip.startOdometer);
 
-    await trip.update({ status: 'completed', endTime, durationMinutes, endOdometer, totalMileage, endLatitude, endLongitude, endAddress, endReceivedAt: new Date() });
+    // Arrival check: did the trip end near where the dispatcher sent it?
+    let endDistanceMeters: number | null = null;
+    let arrivedAtDestination: boolean | null = null;
+    if (trip.destinationLatitude != null && trip.destinationLongitude != null && endLatitude != null && endLongitude != null) {
+      endDistanceMeters = distanceMeters(Number(endLatitude), Number(endLongitude), Number(trip.destinationLatitude), Number(trip.destinationLongitude));
+      arrivedAtDestination = endDistanceMeters <= arrivalRadiusMeters();
+    }
+
+    await trip.update({ status: 'completed', endTime, durationMinutes, endOdometer, totalMileage, endLatitude, endLongitude, endAddress, endReceivedAt: new Date(), endDistanceMeters, arrivedAtDestination });
     await Vehicle.update({ currentOdometer: endOdometer }, { where: { id: trip.vehicleId } });
 
     const io = req.app.get('io');

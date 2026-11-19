@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView,
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { getAssignedVehicle, keepPhoto, submitStart } from '../services/offlineTrips';
+import { getAssignedVehicle, getSavedDestination, keepPhoto, submitStart } from '../services/offlineTrips';
 
 export default function StartTripScreen() {
   const navigation = useNavigation<any>();
@@ -86,7 +86,12 @@ export default function StartTripScreen() {
        * online. Every send carries the same clientRef, so a retry after a
        * dropped connection can never create a second trip.
        */
+      // Recorded with the trip so the office can see where it was headed.
+      // Read from the phone, never the network, so a weak signal cannot hold
+      // up the start; the live socket keeps this copy current.
+      const destination = await getSavedDestination();
       const outcome = await submitStart({
+        destinationAddress: destination?.address ?? null,
         vehicle: {
           id: assignedVehicle.id,
           plateNumber: assignedVehicle.plateNumber,

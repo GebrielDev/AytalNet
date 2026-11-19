@@ -94,6 +94,14 @@ export const connectDatabase = async (): Promise<void> => {
       'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS destination_address VARCHAR(500);',
       'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS destination_note VARCHAR(500);',
       'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS destination_updated_at TIMESTAMP WITH TIME ZONE;',
+      'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS destination_latitude DECIMAL(10,7);',
+      'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS destination_longitude DECIMAL(10,7);',
+      'ALTER TABLE trips ADD COLUMN IF NOT EXISTS destination_address VARCHAR(500);',
+      'ALTER TABLE trips ADD COLUMN IF NOT EXISTS destination_note VARCHAR(500);',
+      'ALTER TABLE trips ADD COLUMN IF NOT EXISTS destination_latitude DECIMAL(10,7);',
+      'ALTER TABLE trips ADD COLUMN IF NOT EXISTS destination_longitude DECIMAL(10,7);',
+      'ALTER TABLE trips ADD COLUMN IF NOT EXISTS end_distance_meters INTEGER;',
+      'ALTER TABLE trips ADD COLUMN IF NOT EXISTS arrived_at_destination BOOLEAN;',
     ]) {
       try {
         await sequelize.query(statement);

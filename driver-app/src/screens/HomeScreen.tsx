@@ -4,7 +4,7 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { useAuth } from '../context/AuthContext';
 import PendingTrips from '../components/PendingTrips';
 import DestinationCard, { type Destination } from '../components/DestinationCard';
-import { getActiveTrip, getAssignedVehicle, getDestination, getRecentTrips, loadQueue, subscribeToQueue, type TripHistory } from '../services/offlineTrips';
+import { getActiveTrip, getAssignedVehicle, getDestination, getRecentTrips, subscribeToDestination, loadQueue, subscribeToQueue, type TripHistory } from '../services/offlineTrips';
 
 export default function HomeScreen() {
   const { driver, logout } = useAuth();
@@ -37,6 +37,8 @@ export default function HomeScreen() {
       loadData();
     }, [])
   );
+
+  useEffect(() => subscribeToDestination(setDestination), []);
 
   // A trip sent in the background moves from "waiting" to completed, and the
   // "will be sent" notice goes once nothing is waiting.
