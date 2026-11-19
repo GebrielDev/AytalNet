@@ -1,15 +1,17 @@
 import { Router } from 'express';
 import { readPhoto } from '../config/photoStorage';
+import { authenticateToken, requireUser } from '../middleware/auth';
 
 const router = Router();
 
 /**
- * Serves trip photographs kept in Emergent storage. Unauthenticated on
- * purpose, like the Cloudinary URLs it replaces: the dashboard shows them in
- * plain <img> tags, which cannot send a bearer token. The random UUID in the
- * path is what keeps them private.
+ * Serves trip photographs kept in Emergent storage - to signed-in dashboard
+ * users only. Driver selfies and passenger photos are personal data, so a
+ * leaked or forwarded link shows nothing without a dispatcher's session. The
+ * dashboard fetches these with its bearer token (see AuthImage) rather than
+ * pointing an <img> straight at them.
  */
-router.get(/^\/(sts-fleet\/trips\/[^/]+)$/, async (req, res) => {
+router.get(/^\/(sts-fleet\/trips\/[^/]+)$/, authenticateToken, requireUser, async (req, res) => {
   try {
     const photo = await readPhoto((req.params as unknown as string[])[0]);
     if (!photo) {
@@ -17,7 +19,8 @@ router.get(/^\/(sts-fleet\/trips\/[^/]+)$/, async (req, res) => {
       return;
     }
     res.set('Content-Type', photo.contentType);
-    res.set('Cache-Control', 'private, max-age=86400');
+    // Private: never kept by a shared cache between users.
+    res.set('Cache-Control', 'private, max-age=3600');
     res.send(photo.data);
   } catch (error) {
     console.error('[files] Could not read photo', error);

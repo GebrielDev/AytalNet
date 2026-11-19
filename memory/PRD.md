@@ -23,6 +23,10 @@ a Node/Express/PostgreSQL backend on Railway, a React web dashboard, and an Expo
 - 2026-06: Offline trip history. The driver's Home screen shows saved trips when there is no signal, with an "updated" time, plus trips waiting to send and the total miles.
 - 2026-06: Fixed the inflated page count on the trips list (`distinct: true`).
 
+- 2026-06: Late trip alerts. Every dashboard user gets an email (through the existing Resend/SMTP setup) when a trip's start, or its end if the start was on time, arrives more than `LATE_TRIP_ALERT_MINUTES` (60) late.
+- 2026-06: Private photo links. `/api/files/*` needs a dispatcher or admin session; the dashboard loads photos through AuthImage.
+- 2026-06: Railway go-live checklist written at docs/RAILWAY_GO_LIVE.md.
+
 ## Known limits
 - The preview test copy (Postgres plus the supervisor program) is lost when the container restarts and has to be set up again.
 - The live server needs this backend deployed to Railway, with `PHOTO_STORAGE=emergent`, `EMERGENT_LLM_KEY` and `PUBLIC_API_URL`, before the new app build ships.

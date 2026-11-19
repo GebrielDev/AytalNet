@@ -8,6 +8,7 @@ import { Op, literal } from 'sequelize';
 export const LATE_ARRIVAL_MINUTES = 5;
 import cloudinary from '../config/cloudinary';
 import { usesEmergentStorage, storePhotoInEmergent, erasePhoto } from '../config/photoStorage';
+import { sendLateTripAlert, isLateForAlert } from '../services/lateTripAlerts';
 
 /**
  * Trips recorded offline arrive later, carrying the time the driver actually
@@ -527,6 +528,10 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
       io.to('dashboard').emit('trip:started', fullTrip);
     }
 
+    // Only the current driver app sends a clientRef, and with it the real
+    // start time; that is what makes a late arrival meaningful.
+    if (ref) void sendLateTripAlert(fullTrip ?? { id: tripId!, driverId: driver.id, vehicleId: vehicle.id }, 'start', takenAt, new Date());
+
     res.status(201).json(fullTrip);
   } catch (error) {
     res.status(500).json({ error: 'Failed to start trip' });
@@ -578,6 +583,12 @@ export const endTrip = async (req: Request, res: Response): Promise<void> => {
 
     const io = req.app.get('io');
     if (io) io.to('dashboard').emit('trip:ended', trip);
+
+    // A trip recorded offline from start to finish already raised an alert
+    // when its start arrived; one per trip is enough.
+    if (trip.clientRef && !(trip.createdAt && isLateForAlert(trip.startTime, trip.createdAt))) {
+      void sendLateTripAlert(trip, 'end', endTime, new Date());
+    }
 
     res.json(trip);
   } catch (error) {

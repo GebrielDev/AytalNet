@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { tripsApi } from '../services/api';
+import AuthImage from '../components/AuthImage';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 // Derive backend base URL (strip /api suffix)
@@ -289,19 +290,11 @@ export default function Trips() {
                   <div className="grid grid-cols-2 gap-3">
                     {selectedTrip.photos.map((photo) => (
                       <div key={photo.id} className="bg-gray-50 rounded-lg overflow-hidden">
-                        <img
+                        <AuthImage
                           src={resolvePhotoUrl(photo.photoUrl)}
                           alt={photo.photoType}
                           className="w-full h-36 object-cover"
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.onerror = null;
-                            target.style.display = 'none';
-                            target.parentElement!.insertAdjacentHTML(
-                              'afterbegin',
-                              '<div class="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">Photo unavailable</div>'
-                            );
-                          }}
+                          testId={`trip-photo-${photo.id}`}
                         />
                         <p className="text-xs text-gray-500 p-2 capitalize">{photo.photoType.replace(/_/g, ' ')}</p>
                       </div>

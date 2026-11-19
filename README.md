@@ -64,7 +64,8 @@ Trip photographs go to Cloudinary unless `PHOTO_STORAGE=emergent` is set, in
 which case they go to Emergent managed storage. That also needs
 `EMERGENT_LLM_KEY`, and optionally `PUBLIC_API_URL` (e.g.
 `https://api.startechsolutions.us/api`), which is used to build the photo links.
-These photos are served by the API at `GET /api/files/<path>`. Photos already in
+These photos are served by the API at `GET /api/files/<path>`, to signed-in
+dashboard users only. Photos already in
 Cloudinary stay there and keep working. Emergent storage has no delete call, so
 the retention job erases a photograph by overwriting its file with zero bytes.
 
