@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Scr
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import PendingTrips from '../components/PendingTrips';
-import { getActiveTrip, getAssignedVehicle, getRecentTrips, loadQueue, subscribeToQueue, type TripHistory } from '../services/offlineTrips';
+import DestinationCard, { type Destination } from '../components/DestinationCard';
+import { getActiveTrip, getAssignedVehicle, getDestination, getRecentTrips, loadQueue, subscribeToQueue, type TripHistory } from '../services/offlineTrips';
 
 export default function HomeScreen() {
   const { driver, logout } = useAuth();
@@ -12,6 +13,7 @@ export default function HomeScreen() {
   const [recentTrips, setRecentTrips] = useState<any[]>([]);
   const [history, setHistory] = useState<Omit<TripHistory, 'trips'>>({ offline: false, savedAt: null });
   const [loading, setLoading] = useState(true);
+  const [destination, setDestination] = useState<Destination | null>(null);
 
   const route = useRoute<any>();
   const notice: string | undefined = route.params?.notice;
@@ -22,7 +24,8 @@ export default function HomeScreen() {
     setLoading(true);
     // The vehicle is fetched here too so Start Trip still knows it if the
     // signal drops before the driver opens that screen.
-    const [active, recent] = await Promise.all([getActiveTrip(), getRecentTrips(), getAssignedVehicle()]);
+    const [active, recent, , dest] = await Promise.all([getActiveTrip(), getRecentTrips(), getAssignedVehicle(), getDestination()]);
+    setDestination(dest);
     setActiveTrip(active);
     setRecentTrips(recent.trips);
     setHistory({ offline: recent.offline, savedAt: recent.savedAt });
@@ -119,6 +122,8 @@ export default function HomeScreen() {
       ) : null}
 
       <PendingTrips />
+
+      {destination ? <DestinationCard destination={destination} /> : null}
 
       {activeTrip ? (
         <TouchableOpacity

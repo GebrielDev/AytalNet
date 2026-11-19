@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getAllTrips, getActiveTrips, getTripById, startTrip, endTrip, uploadTripPhoto, getDriverActiveTrip, getDriverTrips, cancelTrip, START_PHOTO_FIELDS } from '../controllers/tripController';
+import { getAllTrips, getActiveTrips, getTripById, startTrip, endTrip, uploadTripPhoto, getDriverActiveTrip, getDriverTrips, cancelTrip, getOfflineLocations, START_PHOTO_FIELDS } from '../controllers/tripController';
 import { authenticateToken, requireUser, requireDriver } from '../middleware/auth';
 import multer from 'multer';
 
@@ -34,6 +34,7 @@ router.get('/my-trips', authenticateToken, requireDriver, getDriverTrips);
 // Dispatcher routes
 router.get('/', authenticateToken, requireUser, getAllTrips);
 router.get('/active', authenticateToken, requireUser, getActiveTrips);
+router.get('/offline-locations', authenticateToken, requireUser, getOfflineLocations);
 router.get('/:id', authenticateToken, getTripById);
 router.post('/:id/cancel', authenticateToken, requireUser, cancelTrip);
 

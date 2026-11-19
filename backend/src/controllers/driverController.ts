@@ -176,3 +176,51 @@ export const getMyAssignedVehicle = async (req: Request, res: Response): Promise
     res.status(500).json({ error: 'Failed to fetch assigned vehicle' });
   }
 };
+
+/**
+ * Sets, or with an empty address clears, where a driver should go next. The
+ * driver app shows it with a Navigate button that opens their maps app.
+ */
+export const setDriverDestination = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const driver = await Driver.findByPk(req.params.id);
+    if (!driver) {
+      res.status(404).json({ error: 'Driver not found' });
+      return;
+    }
+    const { address, note } = req.body ?? {};
+    if ((address !== undefined && address !== null && typeof address !== 'string') || (note != null && typeof note !== 'string')) {
+      res.status(400).json({ error: 'Address and note must be text' });
+      return;
+    }
+    const cleanAddress = (address ?? '').trim().slice(0, 500);
+    await driver.update({
+      destinationAddress: cleanAddress || null,
+      destinationNote: cleanAddress ? (note ?? '').trim().slice(0, 500) || null : null,
+      destinationUpdatedAt: cleanAddress ? new Date() : null,
+    });
+    res.json({
+      id: driver.id,
+      destinationAddress: driver.destinationAddress,
+      destinationNote: driver.destinationNote,
+      destinationUpdatedAt: driver.destinationUpdatedAt,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to set destination' });
+  }
+};
+
+export const getMyDestination = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const driver = await Driver.findByPk(req.driver!.id, {
+      attributes: ['destinationAddress', 'destinationNote', 'destinationUpdatedAt'],
+    });
+    res.json(
+      driver?.destinationAddress
+        ? { address: driver.destinationAddress, note: driver.destinationNote, updatedAt: driver.destinationUpdatedAt }
+        : null
+    );
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch destination' });
+  }
+};

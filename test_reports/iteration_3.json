@@ -1,0 +1,44 @@
+{
+  "summary": "Round 4 (Navigate button, destinations, late-alert recipients, coverage map) tested end to end. Backend: 15 of 16 pytest checks pass; vitest 157/157 and typecheck pass. The only failure: an invalid startDate on /trips/offline-locations returns 500 (/trips does the same, so it predates this round). Dashboard: the destination modal saves, clears, is prefilled and persists after reload. The Users late-alert checkbox persists after reload (dispatcher set back to false). The Coverage map loads OSM tiles (all 200) with 3 markers, a working popup and summary, and the from/to filters work. Driver app (390x844 and 375x667): Home destination card, address and note show. Navigate shows Google and Waze (no Apple on web) and Cancel. The tabs open google.com/maps/dir/?api=1&destination=... and waze.com/ul?q=...&navigate=yes. ActiveTrip (michael, given a temporary TEST_ destination) shows the card, the screen scrolls and End Trip is reachable and goes to End Trip. The destination still shows offline. Trips page regression passes (offline filter gives 3 rows, photos load as blobs). One real bug: a same-day From/To range on Coverage (and Trips) returns nothing because endDate is midnight and the end of the range is exclusive.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/trips/offline-locations?endDate=YYYY-MM-DD", "issue": "endDate becomes new Date('YYYY-MM-DD'), which is midnight UTC, so trips on the 'To' day are left out. From=To=2026-11-19 returns 0 points, although all 3 points are on 2026-11-19. GET /api/trips (Trips page) has the same issue. Ref: tripController.ts:119 and :75"},
+      {"endpoint": "GET /api/trips/offline-locations?startDate=garbage", "issue": "Returns 500 'Failed to fetch offline locations' instead of 400 (Invalid Date reaches Sequelize). /api/trips behaves the same. Ref: tripController.ts:118"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Coverage date filter", "issue": "The 'To' date is exclusive, so picking the same day for From and To shows '0 no-signal points' (backend endDate issue).", "testID": "coverage-to", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard Users", "issues": ["toggleAlerts reverts silently when the PUT fails, with no error message for the admin (Users.tsx:98-105)"]},
+      {"screen": "Dashboard DestinationModal", "issues": ["Escape does not close the modal", "The Drivers Destination column shows only the address, not the note"]},
+      {"screen": "Coverage map", "issues": ["Points at the same spot overlap (2 Phoenix points at 33.4,-112 look like 1 marker), so the count does not match the dots. Consider clustering or a count badge."]},
+      {"screen": "Driver app Home", "issues": ["The destination only refreshes when the screen gains focus. A change made by the dispatcher while the driver is on Home does not appear until they leave and come back (no socket or polling)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/regression/test_round4_features.py", "/app/test_reports/pytest/round4.xml"],
+  "action_items": [
+    "Make endDate inclusive in getOfflineLocations and getAllTrips, e.g. Op.lt the next day, or end-of-day when the value is date-only",
+    "Validate startDate/endDate (return 400 for an invalid date) in getOfflineLocations and getAllTrips",
+    "Optional: show an error toast when the late-alerts toggle fails; let Escape close DestinationModal; show the note in the Drivers Destination column"
+  ],
+  "critical_code_review_comments": [
+    "setDriverDestination: validation, trim, 500-char cap, and clearing the note with the address all look right. The route is protected by requireUser; drivers get 403 (verified).",
+    "my-destination is registered before /:id with requireDriver (admin gets 403, no token gets 401). Verified.",
+    "DESTINATION_KEY is in clearOfflineCache, which runs on logout, so a cached destination does not carry over to the next driver.",
+    "The late alert service queries User.findAll({lateTripAlerts:true}) and returns early when nobody is subscribed. The ALTER adds the column NOT NULL DEFAULT TRUE.",
+    "tripController.ts is 741 lines (over 700); consider splitting it.",
+    "Seed trip for michael started 2/8/2026, so ActiveTrip shows a duration of 6818:59:19 (an hours-only format with no days). Old seed data, not from this round."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "94% (15/16 pytest; vitest 157/157; typecheck pass)", "frontend": "100% of the requested flows work; 1 date-filter bug"},
+  "seed_data_creation": "None kept. Temporarily set maria (id 2) and michael (id 5) destinations to TEST_ values and cleared them (both were null before). Toggled dispatcher lateTripAlerts and set it back to false.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login returns accessToken, not token. The driver app keeps Home mounted under ActiveTrip, so use :visible on navigate-button. For offline tests do not use page.go_back() (it reloads the page offline and shows a blank screen); use the header back button [aria-label*=back]. Dashboard drivers have desktop and mobile testIDs (driver-destination-<id> and driver-destination-mobile-<id>).",
+  "rca_of_issue": "Same-day coverage range: Coverage sends endDate='2026-11-19'. The backend runs new Date('2026-11-19'), which is 2026-11-19T00:00Z, and Op.lte on startTime excludes every trip later that day."
+}

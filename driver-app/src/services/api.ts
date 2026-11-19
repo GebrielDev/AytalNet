@@ -132,6 +132,7 @@ export const authApi = {
 export const vehiclesApi = {
   getAvailable: () => api.get('/vehicles/available'),
   getMyAssigned: () => api.get('/drivers/my-vehicle'),
+  getMyDestination: () => api.get('/drivers/my-destination'),
 };
 
 export const tripsApi = {

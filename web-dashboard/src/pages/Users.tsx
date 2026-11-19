@@ -6,6 +6,7 @@ interface UserRecord {
   email: string;
   name: string;
   role: 'admin' | 'dispatcher';
+  lateTripAlerts?: boolean;
   createdAt: string;
 }
 
@@ -93,6 +94,16 @@ export default function Users() {
     }
   };
 
+  // Admins choose who receives late trip alert emails.
+  const toggleAlerts = async (u: UserRecord, on: boolean) => {
+    setUsers((list) => list.map((x) => (x.id === u.id ? { ...x, lateTripAlerts: on } : x)));
+    try {
+      await usersApi.update(u.id, { lateTripAlerts: on });
+    } catch {
+      setUsers((list) => list.map((x) => (x.id === u.id ? { ...x, lateTripAlerts: !on } : x)));
+    }
+  };
+
   const getRoleBadge = (role: string) => {
     return role === 'admin'
       ? 'bg-purple-100 text-purple-800'
@@ -130,6 +141,7 @@ export default function Users() {
                 <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                 <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                 <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" title="Email when a trip recorded offline reaches the office over an hour late">Late trip alerts</th>
                 <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
                 <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -149,6 +161,18 @@ export default function Users() {
                       {u.role}
                     </span>
                   </td>
+                  <td className="px-5 py-3.5">
+                    <label className="inline-flex items-center gap-2 cursor-pointer text-sm text-gray-600">
+                      <input
+                        type="checkbox"
+                        data-testid={`user-late-alerts-${u.id}`}
+                        checked={u.lateTripAlerts !== false}
+                        onChange={(e) => toggleAlerts(u, e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      {u.lateTripAlerts !== false ? 'On' : 'Off'}
+                    </label>
+                  </td>
                   <td className="px-5 py-3.5 text-sm text-gray-600">
                     {new Date(u.createdAt).toLocaleDateString()}
                   </td>
@@ -160,7 +184,7 @@ export default function Users() {
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-gray-400">No users found</td>
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400">No users found</td>
                 </tr>
               )}
             </tbody>

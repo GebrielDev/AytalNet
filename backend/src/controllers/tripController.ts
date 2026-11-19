@@ -49,6 +49,27 @@ const uploadBufferToCloudinary = (
   });
 };
 
+/**
+ * The startTime condition for a From/To filter. A bare To date (2026-01-31)
+ * means "up to the end of that day", so a same-day range is not empty.
+ */
+const dateRange = (startDate: unknown, endDate: unknown): Record<symbol, Date> | null | 'invalid' => {
+  if (!startDate && !endDate) return null;
+  const range: Record<symbol, Date> = {};
+  if (startDate) {
+    const from = new Date(String(startDate));
+    if (!Number.isFinite(from.getTime())) return 'invalid';
+    range[Op.gte] = from;
+  }
+  if (endDate) {
+    const raw = String(endDate);
+    const to = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T23:59:59.999Z` : raw);
+    if (!Number.isFinite(to.getTime())) return 'invalid';
+    range[Op.lte] = to;
+  }
+  return range;
+};
+
 export const getAllTrips = async (req: Request, res: Response): Promise<void> => {
   try {
     const { status, driverId, vehicleId, startDate, endDate, recordedOffline, page = 1, limit = 20 } = req.query;
@@ -69,11 +90,12 @@ export const getAllTrips = async (req: Request, res: Response): Promise<void> =>
     if (status) where.status = status;
     if (driverId) where.driverId = driverId;
     if (vehicleId) where.vehicleId = vehicleId;
-    if (startDate || endDate) {
-      where.startTime = {};
-      if (startDate) where.startTime[Op.gte] = new Date(startDate as string);
-      if (endDate) where.startTime[Op.lte] = new Date(endDate as string);
+    const range = dateRange(startDate, endDate);
+    if (range === 'invalid') {
+      res.status(400).json({ error: 'Dates must look like 2026-01-31' });
+      return;
     }
+    if (range) where.startTime = range;
 
     const offset = (Number(page) - 1) * Number(limit);
     const { count, rows: trips } = await Trip.findAndCountAll({
@@ -96,6 +118,56 @@ export const getAllTrips = async (req: Request, res: Response): Promise<void> =>
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch trips' });
+  }
+};
+
+/**
+ * Where trips were recorded without signal, for the coverage map: the start
+ * point of every start that arrived late and the end point of every end that
+ * did. Only trips from the current app (with a clientRef) are considered.
+ */
+export const getOfflineLocations = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { startDate, endDate } = req.query;
+    const where: any = {
+      [Op.and]: literal(
+        `("Trip"."client_ref" IS NOT NULL AND ("Trip"."created_at" - "Trip"."start_time" > interval '${LATE_ARRIVAL_MINUTES} minutes'` +
+          ` OR "Trip"."end_received_at" - "Trip"."end_time" > interval '${LATE_ARRIVAL_MINUTES} minutes'))`
+      ),
+    };
+    const range = dateRange(startDate, endDate);
+    if (range === 'invalid') {
+      res.status(400).json({ error: 'Dates must look like 2026-01-31' });
+      return;
+    }
+    if (range) where.startTime = range;
+    const trips = await Trip.findAll({
+      where,
+      include: [
+        { model: Driver, as: 'driver', attributes: ['id', 'name'] },
+        { model: Vehicle, as: 'vehicle', attributes: ['id', 'plateNumber'] },
+      ],
+      order: [['startTime', 'DESC']],
+      limit: 2000,
+    });
+
+    const late = (happened?: Date | null, arrived?: Date | null) =>
+      happened && arrived ? Math.round((arrived.getTime() - happened.getTime()) / 60000) : 0;
+    const points: any[] = [];
+    for (const t of trips as any[]) {
+      const base = { tripId: t.id, driver: t.driver?.name ?? null, plate: t.vehicle?.plateNumber ?? null };
+      const startLate = late(t.startTime, t.createdAt);
+      if (startLate > LATE_ARRIVAL_MINUTES && t.startLatitude != null && t.startLongitude != null) {
+        points.push({ ...base, part: 'start', at: t.startTime, minutesLate: startLate, latitude: Number(t.startLatitude), longitude: Number(t.startLongitude) });
+      }
+      const endLate = late(t.endTime, t.endReceivedAt);
+      if (endLate > LATE_ARRIVAL_MINUTES && t.endLatitude != null && t.endLongitude != null) {
+        points.push({ ...base, part: 'end', at: t.endTime, minutesLate: endLate, latitude: Number(t.endLatitude), longitude: Number(t.endLongitude) });
+      }
+    }
+    res.json(points);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch offline locations' });
   }
 };
 

@@ -2,7 +2,7 @@ import { User, Driver, Vehicle } from '../models';
 import { sendMail } from '../config/email';
 
 /**
- * Emails every dashboard user (dispatchers and admins) when part of a trip
+ * Emails the dashboard users an admin has opted in (Users page) when part of a trip
  * reaches the office long after it happened - recorded on a phone with no
  * signal and sent later.
  *
@@ -42,7 +42,7 @@ export const sendLateTripAlert = async (
     if (!isLateForAlert(happenedAt, receivedAt)) return;
 
     const [users, driver, vehicle] = await Promise.all([
-      User.findAll({ attributes: ['email'] }),
+      User.findAll({ where: { lateTripAlerts: true }, attributes: ['email'] }),
       trip.driverId ? Driver.findByPk(trip.driverId, { attributes: ['name', 'employeeId'] }) : null,
       Vehicle.findByPk(trip.vehicleId, { attributes: ['plateNumber'] }),
     ]);

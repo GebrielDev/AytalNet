@@ -5,7 +5,7 @@ import { disconnectUserSockets } from '../socket';
 export const getAllUsers = async (req: Request, res: Response): Promise<void> => {
   try {
     const users = await User.findAll({
-      attributes: ['id', 'email', 'name', 'role', 'createdAt', 'updatedAt'],
+      attributes: ['id', 'email', 'name', 'role', 'lateTripAlerts', 'createdAt', 'updatedAt'],
       order: [['createdAt', 'DESC']],
     });
     res.json(users);
@@ -18,7 +18,7 @@ export const getAllUsers = async (req: Request, res: Response): Promise<void> =>
 export const getUserById = async (req: Request, res: Response): Promise<void> => {
   try {
     const user = await User.findByPk(req.params.id, {
-      attributes: ['id', 'email', 'name', 'role', 'createdAt', 'updatedAt'],
+      attributes: ['id', 'email', 'name', 'role', 'lateTripAlerts', 'createdAt', 'updatedAt'],
     });
     if (!user) {
       res.status(404).json({ error: 'User not found' });
@@ -73,12 +73,17 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const { email, name, password, role } = req.body;
+    const { email, name, password, role, lateTripAlerts } = req.body;
 
     if (role && !['admin', 'dispatcher'].includes(role)) {
       res.status(400).json({ error: 'Role must be admin or dispatcher' });
       return;
     }
+    if (lateTripAlerts !== undefined && typeof lateTripAlerts !== 'boolean') {
+      res.status(400).json({ error: 'lateTripAlerts must be true or false' });
+      return;
+    }
+    if (typeof lateTripAlerts === 'boolean') user.lateTripAlerts = lateTripAlerts;
 
     if (email && email !== user.email) {
       const existing = await User.findOne({ where: { email } });
@@ -103,6 +108,7 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
       email: user.email,
       name: user.name,
       role: user.role,
+      lateTripAlerts: user.lateTripAlerts,
       updatedAt: user.updatedAt,
     });
   } catch (error) {

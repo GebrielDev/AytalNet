@@ -9,6 +9,8 @@ interface UserAttributes {
   passwordHash: string;
   name: string;
   role: 'admin' | 'dispatcher';
+  // Whether this user receives late trip alert emails. Admins choose.
+  lateTripAlerts?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -21,6 +23,7 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
   public passwordHash!: string;
   public name!: string;
   public role!: 'admin' | 'dispatcher';
+  public lateTripAlerts!: boolean;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 
@@ -59,6 +62,12 @@ User.init(
       type: DataTypes.ENUM('admin', 'dispatcher'),
       allowNull: false,
       defaultValue: 'dispatcher',
+    },
+    lateTripAlerts: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+      field: 'late_trip_alerts',
     },
   },
   {

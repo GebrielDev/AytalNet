@@ -70,6 +70,7 @@ const SERVER_IDS_KEY = 'offlineTrips:serverIds';
 const ACTIVE_KEY = 'offlineTrips:activeTrip';
 const VEHICLE_KEY = 'offlineTrips:assignedVehicle';
 const RECENT_KEY = 'offlineTrips:recentTrips';
+const DESTINATION_KEY = 'offlineTrips:destination';
 
 let currentDriverId: number | null = null;
 const listeners = new Set<(queue: QueuedItem[]) => void>();
@@ -354,6 +355,9 @@ const cachedRead = async <T>(key: string, read: () => Promise<T>, fallback: T): 
   }
 };
 
+// Kept on the phone so the destination still shows with no signal.
+export const getDestination = () => cachedRead<any>(DESTINATION_KEY, async () => (await vehiclesApi.getMyDestination()).data, null);
+
 export const getAssignedVehicle = () => cachedRead(VEHICLE_KEY, async () => (await vehiclesApi.getMyAssigned()).data, null);
 
 export interface TripHistory {
@@ -419,4 +423,4 @@ export const startOfflineSync = (driverId: number | null): (() => void) => {
 };
 
 /** Clears this driver's cached server data on sign-out. The queue is kept. */
-export const clearOfflineCache = () => AsyncStorage.multiRemove([ACTIVE_KEY, VEHICLE_KEY, RECENT_KEY]);
+export const clearOfflineCache = () => AsyncStorage.multiRemove([ACTIVE_KEY, VEHICLE_KEY, RECENT_KEY, DESTINATION_KEY]);

@@ -89,6 +89,20 @@ export const connectDatabase = async (): Promise<void> => {
       console.log('Migration note (trips.end_received_at):', (migrationError as Error).message);
     }
 
+    for (const statement of [
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS late_trip_alerts BOOLEAN NOT NULL DEFAULT TRUE;',
+      'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS destination_address VARCHAR(500);',
+      'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS destination_note VARCHAR(500);',
+      'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS destination_updated_at TIMESTAMP WITH TIME ZONE;',
+    ]) {
+      try {
+        await sequelize.query(statement);
+      } catch (migrationError) {
+        console.log('Migration note:', (migrationError as Error).message);
+      }
+    }
+    console.log('Migration: alert recipients and driver destinations ensured');
+
     await sequelize.sync();
     console.log('Database models synchronized');
   } catch (error) {

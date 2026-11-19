@@ -27,6 +27,10 @@ a Node/Express/PostgreSQL backend on Railway, a React web dashboard, and an Expo
 - 2026-06: Private photo links. `/api/files/*` needs a dispatcher or admin session; the dashboard loads photos through AuthImage.
 - 2026-06: Railway go-live checklist written at docs/RAILWAY_GO_LIVE.md.
 
+- 2026-06: Destinations and Navigate. Dispatchers set or clear a driver's destination from the Drivers page. The app shows it on Home and Active Trip, also offline, with Navigate → Google Maps / Apple Maps (iOS) / Waze.
+- 2026-06: Alert recipients. Admins can switch late trip alerts on or off for each user on the Users page (`users.late_trip_alerts`).
+- 2026-06: Signal coverage map. A dashboard Coverage page (Leaflet/OpenStreetMap) uses `GET /api/trips/offline-locations`.
+
 ## Known limits
 - The preview test copy (Postgres plus the supervisor program) is lost when the container restarts and has to be set up again.
 - The live server needs this backend deployed to Railway, with `PHOTO_STORAGE=emergent`, `EMERGENT_LLM_KEY` and `PUBLIC_API_URL`, before the new app build ships.

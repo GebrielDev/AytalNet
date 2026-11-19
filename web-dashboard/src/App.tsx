@@ -10,6 +10,7 @@ import Vehicles from './pages/Vehicles';
 import Trips from './pages/Trips';
 import Reports from './pages/Reports';
 import Users from './pages/Users';
+import Coverage from './pages/Coverage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -46,6 +47,7 @@ export default function App() {
                 <Route path="/vehicles" element={<Vehicles />} />
                 <Route path="/trips" element={<Trips />} />
                 <Route path="/reports" element={<Reports />} />
+                <Route path="/coverage" element={<Coverage />} />
                 <Route path="/users" element={<Users />} />
               </Routes>
             </Layout>

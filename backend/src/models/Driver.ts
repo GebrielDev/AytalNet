@@ -18,11 +18,16 @@ interface DriverAttributes {
   // without a date there is nothing to count seven years from. Set by the hook
   // below whenever status moves to inactive, cleared on reinstatement.
   deactivatedAt?: Date | null;
+  // Where the dispatcher wants this driver to go next. Shown in the driver
+  // app with a Navigate button; cleared by the dispatcher.
+  destinationAddress?: string | null;
+  destinationNote?: string | null;
+  destinationUpdatedAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface DriverCreationAttributes extends Optional<DriverAttributes, 'id' | 'status' | 'assignedVehicleId' | 'deactivatedAt' | 'createdAt' | 'updatedAt'> {}
+interface DriverCreationAttributes extends Optional<DriverAttributes, 'id' | 'status' | 'assignedVehicleId' | 'deactivatedAt' | 'destinationAddress' | 'destinationNote' | 'destinationUpdatedAt' | 'createdAt' | 'updatedAt'> {}
 
 class Driver extends Model<DriverAttributes, DriverCreationAttributes> implements DriverAttributes {
   public id!: number;
@@ -35,6 +40,9 @@ class Driver extends Model<DriverAttributes, DriverCreationAttributes> implement
   public assignedVehicleId!: number | null;
   public status!: 'active' | 'inactive';
   public deactivatedAt!: Date | null;
+  public destinationAddress?: string | null;
+  public destinationNote?: string | null;
+  public destinationUpdatedAt?: Date | null;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 
@@ -104,6 +112,21 @@ Driver.init(
       allowNull: true,
       defaultValue: null,
       field: 'deactivated_at',
+    },
+    destinationAddress: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      field: 'destination_address',
+    },
+    destinationNote: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      field: 'destination_note',
+    },
+    destinationUpdatedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'destination_updated_at',
     },
   },
   {

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, ScrollView } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import DestinationCard, { type Destination } from '../components/DestinationCard';
+import { getDestination } from '../services/offlineTrips';
 
 export default function ActiveTripScreen() {
   const navigation = useNavigation<any>();
@@ -8,6 +10,11 @@ export default function ActiveTripScreen() {
   const trip = route.params?.trip;
 
   const [duration, setDuration] = useState(0);
+  const [destination, setDestination] = useState<Destination | null>(null);
+
+  useEffect(() => {
+    getDestination().then(setDestination);
+  }, []);
 
   useEffect(() => {
     const startTime = new Date(trip.startTime).getTime();
@@ -41,7 +48,7 @@ export default function ActiveTripScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
       <View style={styles.statusCard}>
         <View style={styles.statusIndicator} />
         <Text style={styles.statusText}>Trip in Progress</Text>
@@ -63,6 +70,8 @@ export default function ActiveTripScreen() {
         )}
       </View>
 
+      {destination ? <DestinationCard destination={destination} /> : null}
+
       <View style={styles.durationCard}>
         <Text style={styles.durationLabel}>Duration</Text>
         <Text style={styles.durationValue} testID="active-trip-duration">{formatDuration(duration)}</Text>
@@ -81,12 +90,13 @@ export default function ActiveTripScreen() {
       <TouchableOpacity style={styles.endButton} onPress={handleEndTrip} testID="active-trip-end-button">
         <Text style={styles.endButtonText}>End Trip</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', padding: 20 },
+  scroll: { flex: 1, backgroundColor: '#f8fafc' },
+  container: { flexGrow: 1, padding: 20, paddingBottom: 32 },
   statusCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ecfdf5', padding: 16, borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: '#86efac' },
   statusIndicator: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e', marginRight: 12 },
   statusText: { fontSize: 17, fontWeight: '700', color: '#166534' },

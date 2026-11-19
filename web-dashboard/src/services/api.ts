@@ -125,6 +125,7 @@ export const driversApi = {
   update: (id: number, data: any) => api.put(`/drivers/${id}`, data),
   delete: (id: number) => api.delete(`/drivers/${id}`),
   assignVehicle: (id: number, vehicleId: number | null) => api.put(`/drivers/${id}/assign-vehicle`, { vehicleId }),
+  setDestination: (id: number, address: string, note: string) => api.put(`/drivers/${id}/destination`, { address, note }),
 };
 
 export const vehiclesApi = {
@@ -138,6 +139,7 @@ export const vehiclesApi = {
 export const tripsApi = {
   getAll: (params?: any) => api.get('/trips', { params }),
   getActive: () => api.get('/trips/active'),
+  getOfflineLocations: (params?: any) => api.get('/trips/offline-locations', { params }),
   getById: (id: number) => api.get(`/trips/${id}`),
   cancel: (id: number) => api.post(`/trips/${id}/cancel`),
 };
