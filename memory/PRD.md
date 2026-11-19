@@ -36,6 +36,10 @@ a Node/Express/PostgreSQL backend on Railway, a React web dashboard, and an Expo
 - 2026-06: Arrival check. Destinations are looked up on OpenStreetMap (Nominatim) when saved. At trip end the server stores endDistanceMeters and arrivedAtDestination (within `ARRIVAL_RADIUS_METERS`, 300 by default). The dashboard shows a badge and an Arrival row.
 - 2026-06: Coverage export. The Coverage page has a "Download spreadsheet" CSV button.
 
+- 2026-06: Address search. `GET /api/geo/search` (Photon/OSM, cached for 10 minutes, biased toward Phoenix) backs the dashboard AddressSearch, which suggests addresses while typing.
+- 2026-06: Multi-stop jobs. A `driver_stops` table with `GET/PUT /api/drivers/:id/stops`, `GET /api/drivers/my-stops` and `POST /api/drivers/my-stops/:id/arrive` (checked against the 300 m radius). The current stop is copied onto the driver's destination fields, and the app shows StopsCard: Navigate on every stop, "I've arrived" on the next. Stop changes reach the phone live via `stops:updated`.
+- 2026-06: Arrival notices. A dashboard-wide toast (ArrivalNotices) listens for socket `driver:arrived`, sent when the driver taps "I've arrived" or ends a trip within range of a stop.
+
 ## Known limits
 - The preview test copy (Postgres plus the supervisor program) is lost when the container restarts and has to be set up again.
 - The live server needs this backend deployed to Railway, with `PHOTO_STORAGE=emergent`, `EMERGENT_LLM_KEY` and `PUBLIC_API_URL`, before the new app build ships.

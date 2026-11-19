@@ -1,10 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { io, Socket } from 'socket.io-client';
-import { getDestination, setDestinationLocal } from './offlineTrips';
+import { getStops, setStopsLocal } from './offlineTrips';
 
 /**
- * A live line to the server while the app is open, so a destination the
- * dispatcher sets appears on the phone at once instead of on the next visit
+ * A live line to the server while the app is open, so the stops the
+ * dispatcher sets appear on the phone at once instead of on the next visit
  * to Home. Uses the /driver namespace, which only ever carries this driver's
  * own updates.
  *
@@ -22,7 +22,7 @@ let socket: Socket | null = null;
 const refreshThenReconnect = async () => {
   // Any authenticated request renews an expired access token via the API
   // client's interceptor; it also catches up on a change missed meanwhile.
-  await getDestination();
+  await getStops();
   socket?.connect();
 };
 
@@ -38,8 +38,8 @@ export const startLiveUpdates = (driverId: number | null): (() => void) => {
     },
   });
 
-  socket.on('destination:updated', (destination) => {
-    setDestinationLocal(destination ?? null);
+  socket.on('stops:updated', (stops) => {
+    setStopsLocal(Array.isArray(stops) ? stops : []);
   });
 
   // A refused handshake (expired token) or the server closing the socket at
@@ -52,7 +52,7 @@ export const startLiveUpdates = (driverId: number | null): (() => void) => {
   });
   // Back online after a gap: fetch once in case an update was missed.
   socket.on('connect', () => {
-    getDestination();
+    getStops();
   });
 
   return () => {

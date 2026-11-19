@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, ScrollView } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import DestinationCard, { type Destination } from '../components/DestinationCard';
-import { getDestination, subscribeToDestination } from '../services/offlineTrips';
+import StopsCard from '../components/StopsCard';
+import { getStops, subscribeToStops, type Stop } from '../services/offlineTrips';
 
 export default function ActiveTripScreen() {
   const navigation = useNavigation<any>();
@@ -10,11 +10,11 @@ export default function ActiveTripScreen() {
   const trip = route.params?.trip;
 
   const [duration, setDuration] = useState(0);
-  const [destination, setDestination] = useState<Destination | null>(null);
+  const [stops, setStops] = useState<Stop[]>([]);
 
   useEffect(() => {
-    getDestination().then(setDestination);
-    return subscribeToDestination(setDestination);
+    getStops().then(setStops);
+    return subscribeToStops(setStops);
   }, []);
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export default function ActiveTripScreen() {
         )}
       </View>
 
-      {destination ? <DestinationCard destination={destination} /> : null}
+      <StopsCard stops={stops} />
 
       <View style={styles.durationCard}>
         <Text style={styles.durationLabel}>Duration</Text>

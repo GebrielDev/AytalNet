@@ -1,0 +1,44 @@
+{
+  "summary": "Round 6 tested: address search (Photon proxy), multi-stop jobs (dashboard StopsModal + API + driver app StopsCard), arrival notices (socket driver:arrived toast), plus regression. Backend 11/11 new pytest + socket script pass; vitest 157/157 and typecheck pass. Dashboard: suggestions after 3+ chars, picking one shows 'Found on the map', note/up/down/remove/add/save all work, an unfindable address shows stops-not-found and is still saved, done stops are listed and clear-done works, the toast shows on another page (Vehicles) with driver name and address, can be dismissed and auto-hides after 20 s. Driver app: 'Stops · 2 to go', Navigate shows Google/Waze, only the next stop has I've arrived, the far-away message shows 'You are 5.6 km from this stop', a nearby arrival moves on to the next stop and sends driver:arrived to the dashboard, and a dispatcher edit shows up live without a reload. Trip-end arrival (how=trip_end) works and the Trips page badges still render. Found 1 medium bug (a stale modal save brings back a stop that was just reached) and a web-only stale-location issue. No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/drivers/:id/stops", "issue": "MEDIUM, confirmed by API test: a stale save brings back a stop the driver already reached. setDriverStops deletes all pending stops and recreates them from the request body. Steps: the dispatcher opens the modal, the driver reaches stop A, then the dispatcher saves (e.g. after editing B's note). Result: 1 TEST_ A done, 2 TEST_ A pending, 3 TEST_ B pending. The driver is sent back to A and the arrived stop shows up again in the app. StopsModal does not refresh when driver:arrived arrives."},
+      {"endpoint": "POST /api/drivers/my-stops/:stopId/arrive", "issue": "The order is not enforced on the server. Any pending stop can be marked arrived, not just the next one; only the UI limits this. A stop with no map position (e.g. 'qqzz nowhere 0000') is accepted from any location (tested from about 50 km away) and still sends the dashboard toast. This is documented, but the dispatcher can't tell that the toast was not verified (no distance shown is the only hint)."},
+      {"endpoint": "PUT /api/drivers/:id/stops (geocoding)", "issue": "Addresses that were not found are looked up with Nominatim again on every save (including reorder and clear-done), because the 'known' map only caches stops that have coordinates. They are looked up one after another, so a list with many unfound stops makes a slow request and repeats external calls."},
+      {"endpoint": "Trip end vs stops", "issue": "The trip's arrival check and the stop arrival disagree. Trip 22 was started with destination = first stop (Zoo) and ended 56 m from the 2nd stop (Chase). The stop was marked arrived (how=trip_end, tripId=22), but the Trips page badge shows 'Ended 11.2 km away'. Consider basing the trip badge on any stop reached during that trip."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "StopsCard arrive (Expo web only)", "issue": "expo-location web getCurrentPositionAsync uses navigator.geolocation with maximumAge: Infinity (node_modules/expo-location/build/ExpoLocation.web.js:122). On web, every later tap of I've arrived reuses the first position for the rest of the session. Reproduced: tapped while 5.6 km away, moved the geolocation to Chase Field, tapped again and still got '5.6 km'. It worked after a page reload. Native builds are not affected. Fix on web: call navigator.geolocation.getCurrentPosition with {maximumAge:0, enableHighAccuracy:true} (Platform.OS==='web') or use watchPositionAsync. Reference: /app/driver-app/src/components/StopsCard.tsx:67", "testID": "arrive-button-<id>", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Dashboard StopsModal open while the driver arrives", "issue": "The modal keeps pending drafts that are out of date and does not react to driver:arrived or stops updates, so saving brings back the reached stop (see the backend minor issue). Suggested fix: send stop ids and have the server skip ids already arrived, and/or refresh or warn in the modal when driver:arrived matches this driver.", "affected_testIDs": ["stops-save-button", "stops-row-<i>"]}
+    ],
+    "design_issues": [
+      {"screen": "Dashboard StopsModal", "issues": ["stops-up/down/remove buttons are about 24x28 px (px-2 py-1). On the mobile viewport (390px) they are under the 44px touch target.", "When a search returns no matches there is no 'No matches' hint; the box just shows nothing."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/regression/test_round6_stops.py", "/app/test_reports/regression/socket_round6.cjs", "/app/test_reports/pytest/round6.xml"],
+  "action_items": [
+    "Fix the stale-save issue: the PUT /drivers/:id/stops body should carry stop ids, and the server should not recreate stops already arrived (or reject with 409 when the list is out of date). Also refresh StopsModal on driver:arrived for that driver.",
+    "Optional: on Expo web, get a fresh position for I've arrived (maximumAge 0) instead of Location.getCurrentPositionAsync, which caches forever on web.",
+    "Optional: cache 'not found' results in setDriverStops so unfound addresses are not looked up with Nominatim again on every save.",
+    "Optional: make the trip arrival badge match the stops (a trip that ended at a later stop shows 'Ended X km away').",
+    "Optional: enforce on the server that only the next stop can be arrived at, or show 'unverified' on toasts for stops with no map position."
+  ],
+  "critical_code_review_comments": [
+    "setDriverStops replaces stops by delete + recreate, so stop ids change on every save, even for unchanged stops. Any client holding an id (e.g. a driver about to tap arrive) gets 404 'Stop not found' after any dispatcher edit, until the socket push arrives.",
+    "ArrivalNotices opens its own socket.io connection next to the existing dashboard live socket (two connections per tab).",
+    "The geo proxy has a 5 s timeout, a 10 min cache and requires user auth, and the driver token is refused (401/403) as expected."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (11/11 pytest + socket checks; vitest 157/157; typecheck clean)", "frontend": "95% (all requested flows pass; a stale location on web when tapping arrive again in the same session)"},
+  "seed_data_creation": "Used James (id 3) for API/dashboard tests; his stops were cleared back to empty. Sarah's stops were changed during the app test and restored to the same state (Phoenix Zoo arrived + Gate A, Chase Field next, 'qqzz nowhere 0000'), but the stop ids are now 22/23/24 (were 3/4/5). John and Maria are untouched. Data left behind: completed trip id 22 for James on vehicle 3 (destination 'TEST_ Phoenix Zoo'), which also raised vehicle 3's odometer by about 8 mi.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: API_BASE=<url>/api pytest /app/test_reports/regression/test_round6_stops.py ; BASE=<url> node /app/test_reports/regression/socket_round6.cjs. Login pages: dashboard uses input[type=email/password] + button[type=submit] (no testids). Playwright note: on Expo web the geolocation is cached per page (maximumAge Infinity), so set the geolocation BEFORE loading the page when testing the near arrival. The Python urllib in browser_automation could not call the API; use page.request instead.",
+  "rca_of_issue": "Stale save: driverController.setDriverStops does DriverStop.destroy({arrivedAt:null}) and then bulkCreate(body.stops). The body comes from the modal's state loaded at open time, which has no ids and no arrival status, so a stop reached after the modal opened is recreated as pending. Repro script: /tmp/race.sh steps (PUT A,B -> driver arrives A -> PUT A,B with an edit -> A appears done and pending)."
+}

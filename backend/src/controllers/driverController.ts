@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
-import { Driver, Trip, Vehicle } from '../models';
+import { Driver, Trip, Vehicle, DriverStop } from '../models';
 import { Op } from 'sequelize';
 import { geocodeAddress } from '../services/geo';
-import { driverRoom } from '../socket';
+import sequelize from '../config/database';
+import { listStops, syncDriverStops, markStopArrived } from '../services/stops';
+import { distanceMeters, arrivalRadiusMeters } from '../services/geo';
 
 export const getAllDrivers = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -184,48 +186,158 @@ export const getMyAssignedVehicle = async (req: Request, res: Response): Promise
  * driver app shows it with a Navigate button that opens their maps app.
  */
 export const setDriverDestination = async (req: Request, res: Response): Promise<void> => {
+  // Kept for older dashboards: one destination is a job with a single stop.
+  const { address, note } = req.body ?? {};
+  if ((address != null && typeof address !== 'string') || (note != null && typeof note !== 'string')) {
+    res.status(400).json({ error: 'Address and note must be text' });
+    return;
+  }
+  req.body = { stops: (address ?? '').trim() ? [{ address, note }] : [] };
+  await setDriverStops(req, res);
+};
+
+const MAX_STOPS = 25;
+
+/**
+ * Replaces the stops still to visit with the list given, in order. Stops
+ * already reached stay as a record until the dispatcher clears them
+ * (clearDone). Each stop may carry the map position picked from the address
+ * search; otherwise it is looked up, and a stop that cannot be found is still
+ * saved and navigable but reported back as not found.
+ */
+export const setDriverStops = async (req: Request, res: Response): Promise<void> => {
   try {
     const driver = await Driver.findByPk(req.params.id);
     if (!driver) {
       res.status(404).json({ error: 'Driver not found' });
       return;
     }
-    const { address, note } = req.body ?? {};
-    if ((address !== undefined && address !== null && typeof address !== 'string') || (note != null && typeof note !== 'string')) {
-      res.status(400).json({ error: 'Address and note must be text' });
+    const { stops, clearDone } = req.body ?? {};
+    if (!Array.isArray(stops) || stops.length > MAX_STOPS) {
+      res.status(400).json({ error: `Send a list of up to ${MAX_STOPS} stops` });
       return;
     }
-    const cleanAddress = (address ?? '').trim().slice(0, 500);
-    // Looked up only when the address changes; a note edit keeps the position.
-    const point =
-      !cleanAddress ? null
-      : cleanAddress === driver.destinationAddress && driver.destinationLatitude != null
-        ? { latitude: Number(driver.destinationLatitude), longitude: Number(driver.destinationLongitude) }
-        : await geocodeAddress(cleanAddress);
-    await driver.update({
-      destinationAddress: cleanAddress || null,
-      destinationNote: cleanAddress ? (note ?? '').trim().slice(0, 500) || null : null,
-      destinationUpdatedAt: cleanAddress ? new Date() : null,
-      destinationLatitude: point?.latitude ?? null,
-      destinationLongitude: point?.longitude ?? null,
+    const clean: { id: number | null; address: string; note: string | null; latitude: number | null; longitude: number | null }[] = [];
+    for (const raw of stops) {
+      const address = typeof raw?.address === 'string' ? raw.address.trim().slice(0, 500) : '';
+      if (!address) {
+        res.status(400).json({ error: 'Every stop needs an address' });
+        return;
+      }
+      if (raw.note != null && typeof raw.note !== 'string') {
+        res.status(400).json({ error: 'Notes must be text' });
+        return;
+      }
+      const lat = Number(raw.latitude);
+      const lng = Number(raw.longitude);
+      const picked = raw.latitude != null && raw.longitude != null && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+      clean.push({ id: Number.isInteger(raw.id) ? raw.id : null, address, note: (raw.note ?? '').trim().slice(0, 500) || null, latitude: picked ? lat : null, longitude: picked ? lng : null });
+    }
+
+    // Positions for addresses typed without picking a suggestion. Reuses a
+    // known position for an unchanged address, so reordering costs nothing.
+    const known = new Map(
+      (await DriverStop.findAll({ where: { driverId: driver.id } }))
+        .filter((s) => s.latitude != null)
+        .map((s) => [s.address, { latitude: Number(s.latitude), longitude: Number(s.longitude) }])
+    );
+    for (const stop of clean) {
+      if (stop.latitude != null) continue;
+      const point = known.get(stop.address) ?? (await geocodeAddress(stop.address));
+      if (point) Object.assign(stop, point);
+    }
+
+    await sequelize.transaction(async (transaction) => {
+      const existing = await DriverStop.findAll({ where: { driverId: driver.id }, transaction });
+      const byId = new Map(existing.map((s) => [s.id, s]));
+      // A stop the driver reached while the dispatcher had the list open comes
+      // back in the save as still pending; it stays reached and is dropped.
+      const wanted = clean.filter((s) => !(s.id != null && byId.get(s.id)?.arrivedAt));
+      const keep = new Set(wanted.map((s) => s.id).filter((id): id is number => id != null && byId.has(id)));
+      await DriverStop.destroy({
+        where: clearDone
+          ? { driverId: driver.id, id: { [Op.notIn]: [...keep, 0] } }
+          : { driverId: driver.id, arrivedAt: null, id: { [Op.notIn]: [...keep, 0] } },
+        transaction,
+      });
+      const done = clearDone ? 0 : existing.filter((s) => s.arrivedAt).length;
+      let position = done;
+      for (const { id, ...stop } of wanted) {
+        position += 1;
+        const current = id != null ? byId.get(id) : undefined;
+        // Unchanged stops keep their id; edited ones are updated in place.
+        if (current) await current.update({ ...stop, position }, { transaction });
+        else await DriverStop.create({ ...stop, driverId: driver.id, position }, { transaction });
+      }
     });
 
-    // Pushed to the driver's phone straight away if the app is open.
-    const forApp = cleanAddress
-      ? { address: driver.destinationAddress, note: driver.destinationNote, updatedAt: driver.destinationUpdatedAt }
-      : null;
-    req.app.get('io')?.of('/driver').to(driverRoom(driver.id)).emit('destination:updated', forApp);
-
-    res.json({
-      id: driver.id,
-      destinationAddress: driver.destinationAddress,
-      destinationNote: driver.destinationNote,
-      destinationUpdatedAt: driver.destinationUpdatedAt,
-      // False tells the dashboard the arrival check cannot run for this address.
-      destinationFound: cleanAddress ? point != null : null,
-    });
+    const saved = await syncDriverStops(req.app.get('io'), driver.id);
+    res.json({ driverId: driver.id, stops: saved, notFound: saved.filter((s) => !s.arrivedAt && s.latitude == null).map((s) => s.address) });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to set destination' });
+    console.error('[stops] Could not save stops', error);
+    res.status(500).json({ error: 'Failed to save stops' });
+  }
+};
+
+export const getDriverStops = async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json(await listStops(Number(req.params.id)));
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch stops' });
+  }
+};
+
+export const getMyStops = async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json(await listStops(req.driver!.id));
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch stops' });
+  }
+};
+
+/**
+ * The driver taps "I've arrived". Accepted when the phone is within the
+ * arrival radius of the stop (or the stop has no map position, in which case
+ * the driver's word is recorded without a distance).
+ */
+export const arriveAtStop = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const stop = await DriverStop.findOne({ where: { id: req.params.stopId, driverId: req.driver!.id } });
+    if (!stop) {
+      res.status(404).json({ error: 'Stop not found' });
+      return;
+    }
+    if (stop.arrivedAt) {
+      res.json({ stops: await listStops(stop.driverId) });
+      return;
+    }
+    // Stops are visited in the order the dispatcher set.
+    const next = await DriverStop.findOne({ where: { driverId: stop.driverId, arrivedAt: null }, order: [['position', 'ASC'], ['id', 'ASC']] });
+    if (next && next.id !== stop.id) {
+      res.status(400).json({ error: `Arrive at stop ${next.position} (${next.address}) first.` });
+      return;
+    }
+    const lat = Number(req.body?.latitude);
+    const lng = Number(req.body?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      res.status(400).json({ error: 'Your location is needed to confirm arrival' });
+      return;
+    }
+    let distance: number | null = null;
+    if (stop.latitude != null && stop.longitude != null) {
+      distance = distanceMeters(lat, lng, Number(stop.latitude), Number(stop.longitude));
+      if (distance > arrivalRadiusMeters()) {
+        const away = distance < 1000 ? `${distance} m` : `${(distance / 1000).toFixed(1)} km`;
+        res.status(400).json({ error: `You are ${away} from this stop. Arrive within ${arrivalRadiusMeters()} m to confirm.`, distanceMeters: distance });
+        return;
+      }
+    }
+    const active = await Trip.findOne({ where: { driverId: stop.driverId, status: 'in_progress' }, attributes: ['id'] });
+    const stops = await markStopArrived(req.app.get('io'), stop, distance, active?.id ?? null, 'driver');
+    res.json({ stops });
+  } catch (error) {
+    console.error('[stops] Could not record arrival', error);
+    res.status(500).json({ error: 'Failed to record arrival' });
   }
 };
 

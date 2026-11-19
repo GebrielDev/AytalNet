@@ -133,6 +133,8 @@ export const vehiclesApi = {
   getAvailable: () => api.get('/vehicles/available'),
   getMyAssigned: () => api.get('/drivers/my-vehicle'),
   getMyDestination: () => api.get('/drivers/my-destination'),
+  getMyStops: () => api.get('/drivers/my-stops'),
+  arriveAtStop: (stopId: number, latitude: number, longitude: number) => api.post(`/drivers/my-stops/${stopId}/arrive`, { latitude, longitude }),
 };
 
 export const tripsApi = {

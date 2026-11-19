@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { driversApi, vehiclesApi } from '../services/api';
-import DestinationModal from '../components/DestinationModal';
+import StopsModal from '../components/StopsModal';
 
 interface Vehicle {
   id: number;
@@ -137,7 +137,7 @@ export default function Drivers() {
                 <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                 <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
                 <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Vehicle</th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Destination</th>
+                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stops</th>
                 <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -174,10 +174,11 @@ export default function Drivers() {
                     <button data-testid={`driver-destination-${driver.id}`} onClick={() => setDestinationFor(driver)} className="text-left">
                       {driver.destinationAddress
                         ? <span className="block">
+                            <span className="text-xs text-gray-400 block">Next stop</span>
                             <span className="text-gray-700 hover:text-blue-700 line-clamp-2">{driver.destinationAddress}</span>
                             {driver.destinationNote && <span className="text-xs text-gray-400 line-clamp-1">{driver.destinationNote}</span>}
                           </span>
-                        : <span className="text-blue-600 hover:text-blue-800 font-medium">Set destination</span>}
+                        : <span className="text-blue-600 hover:text-blue-800 font-medium">Add stops</span>}
                     </button>
                   </td>
                   <td className="px-5 py-3.5">
@@ -235,7 +236,7 @@ export default function Drivers() {
               </select>
             </div>
             <div className="flex gap-3 pt-1">
-              <button data-testid={`driver-destination-mobile-${driver.id}`} onClick={() => setDestinationFor(driver)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">{driver.destinationAddress ? 'Destination' : 'Set destination'}</button>
+              <button data-testid={`driver-destination-mobile-${driver.id}`} onClick={() => setDestinationFor(driver)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">{driver.destinationAddress ? 'Stops' : 'Add stops'}</button>
               <button onClick={() => handleEdit(driver)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Edit</button>
               <button onClick={() => handleDelete(driver.id)} className="text-xs text-red-600 hover:text-red-800 font-medium">Deactivate</button>
             </div>
@@ -288,7 +289,7 @@ export default function Drivers() {
         </div>
       )}
       {destinationFor && (
-        <DestinationModal driver={destinationFor} onClose={() => setDestinationFor(null)} onSaved={fetchDrivers} />
+        <StopsModal driver={destinationFor} onClose={() => setDestinationFor(null)} onSaved={fetchDrivers} />
       )}
     </div>
   );

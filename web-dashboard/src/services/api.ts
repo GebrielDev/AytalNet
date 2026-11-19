@@ -126,6 +126,9 @@ export const driversApi = {
   delete: (id: number) => api.delete(`/drivers/${id}`),
   assignVehicle: (id: number, vehicleId: number | null) => api.put(`/drivers/${id}/assign-vehicle`, { vehicleId }),
   setDestination: (id: number, address: string, note: string) => api.put(`/drivers/${id}/destination`, { address, note }),
+  getStops: (id: number) => api.get(`/drivers/${id}/stops`),
+  setStops: (id: number, stops: { id?: number; address: string; note: string; latitude: number | null; longitude: number | null }[], clearDone = false) =>
+    api.put(`/drivers/${id}/stops`, { stops, clearDone }),
 };
 
 export const vehiclesApi = {
@@ -156,6 +159,10 @@ export const usersApi = {
   create: (data: any) => api.post('/users', data),
   update: (id: number, data: any) => api.put(`/users/${id}`, data),
   delete: (id: number) => api.delete(`/users/${id}`),
+};
+
+export const geoApi = {
+  search: (q: string) => api.get('/geo/search', { params: { q } }),
 };
 
 export default api;

@@ -3,8 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Scr
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import PendingTrips from '../components/PendingTrips';
-import DestinationCard, { type Destination } from '../components/DestinationCard';
-import { getActiveTrip, getAssignedVehicle, getDestination, getRecentTrips, subscribeToDestination, loadQueue, subscribeToQueue, type TripHistory } from '../services/offlineTrips';
+import StopsCard from '../components/StopsCard';
+import { getActiveTrip, getAssignedVehicle, getStops, getRecentTrips, subscribeToStops, type Stop, loadQueue, subscribeToQueue, type TripHistory } from '../services/offlineTrips';
 
 export default function HomeScreen() {
   const { driver, logout } = useAuth();
@@ -13,7 +13,7 @@ export default function HomeScreen() {
   const [recentTrips, setRecentTrips] = useState<any[]>([]);
   const [history, setHistory] = useState<Omit<TripHistory, 'trips'>>({ offline: false, savedAt: null });
   const [loading, setLoading] = useState(true);
-  const [destination, setDestination] = useState<Destination | null>(null);
+  const [stops, setStops] = useState<Stop[]>([]);
 
   const route = useRoute<any>();
   const notice: string | undefined = route.params?.notice;
@@ -24,8 +24,8 @@ export default function HomeScreen() {
     setLoading(true);
     // The vehicle is fetched here too so Start Trip still knows it if the
     // signal drops before the driver opens that screen.
-    const [active, recent, , dest] = await Promise.all([getActiveTrip(), getRecentTrips(), getAssignedVehicle(), getDestination()]);
-    setDestination(dest);
+    const [active, recent, , myStops] = await Promise.all([getActiveTrip(), getRecentTrips(), getAssignedVehicle(), getStops()]);
+    setStops(myStops);
     setActiveTrip(active);
     setRecentTrips(recent.trips);
     setHistory({ offline: recent.offline, savedAt: recent.savedAt });
@@ -38,7 +38,7 @@ export default function HomeScreen() {
     }, [])
   );
 
-  useEffect(() => subscribeToDestination(setDestination), []);
+  useEffect(() => subscribeToStops(setStops), []);
 
   // A trip sent in the background moves from "waiting" to completed, and the
   // "will be sent" notice goes once nothing is waiting.
@@ -125,7 +125,7 @@ export default function HomeScreen() {
 
       <PendingTrips />
 
-      {destination ? <DestinationCard destination={destination} /> : null}
+      <StopsCard stops={stops} />
 
       {activeTrip ? (
         <TouchableOpacity

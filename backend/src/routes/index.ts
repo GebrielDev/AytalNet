@@ -6,6 +6,7 @@ import tripRoutes from './trips';
 import reportRoutes from './reports';
 import userRoutes from './users';
 import fileRoutes from './files';
+import geoRoutes from './geo';
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use('/trips', tripRoutes);
 router.use('/reports', reportRoutes);
 router.use('/users', userRoutes);
 router.use('/files', fileRoutes);
+router.use('/geo', geoRoutes);
 
 export default router;

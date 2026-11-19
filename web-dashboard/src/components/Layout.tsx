@@ -1,3 +1,4 @@
+import ArrivalNotices from './ArrivalNotices';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ReactNode, useState } from 'react';
@@ -128,6 +129,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
         {/* Page content */}
         <main className="p-4 sm:p-6 lg:p-8">{children}</main>
+        <ArrivalNotices />
       </div>
     </div>
   );

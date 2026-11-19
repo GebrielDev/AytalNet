@@ -112,6 +112,18 @@ export const connectDatabase = async (): Promise<void> => {
     console.log('Migration: alert recipients and driver destinations ensured');
 
     await sequelize.sync();
+
+    // A destination set before multi-stop jobs existed becomes a one-stop job.
+    try {
+      await sequelize.query(`
+        INSERT INTO driver_stops (driver_id, position, address, note, latitude, longitude, created_at, updated_at)
+        SELECT d.id, 1, d.destination_address, d.destination_note, d.destination_latitude, d.destination_longitude, NOW(), NOW()
+        FROM drivers d
+        WHERE d.destination_address IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM driver_stops s WHERE s.driver_id = d.id);`);
+    } catch (migrationError) {
+      console.log('Migration note (driver_stops):', (migrationError as Error).message);
+    }
     console.log('Database models synchronized');
   } catch (error) {
     console.error('Database connection failed:', error);

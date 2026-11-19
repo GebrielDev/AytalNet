@@ -10,6 +10,7 @@ import cloudinary from '../config/cloudinary';
 import { usesEmergentStorage, storePhotoInEmergent, erasePhoto } from '../config/photoStorage';
 import { sendLateTripAlert, isLateForAlert } from '../services/lateTripAlerts';
 import { distanceMeters, arrivalRadiusMeters } from '../services/geo';
+import { arriveByTripEnd } from '../services/stops';
 
 /**
  * Trips recorded offline arrive later, carrying the time the driver actually
@@ -680,6 +681,19 @@ export const endTrip = async (req: Request, res: Response): Promise<void> => {
     if (trip.destinationLatitude != null && trip.destinationLongitude != null && endLatitude != null && endLongitude != null) {
       endDistanceMeters = distanceMeters(Number(endLatitude), Number(endLongitude), Number(trip.destinationLatitude), Number(trip.destinationLongitude));
       arrivedAtDestination = endDistanceMeters <= arrivalRadiusMeters();
+    }
+    // Ending at one of the driver's stops - not necessarily the one current at
+    // the start - counts as arriving, and marks that stop reached.
+    if (endLatitude != null && endLongitude != null) {
+      try {
+        const atStop = await arriveByTripEnd(req.app.get('io'), driver.id, trip.id, Number(endLatitude), Number(endLongitude));
+        if (atStop != null && !arrivedAtDestination) {
+          endDistanceMeters = atStop;
+          arrivedAtDestination = true;
+        }
+      } catch (e) {
+        console.error('[stops] Arrival at trip end failed', e);
+      }
     }
 
     await trip.update({ status: 'completed', endTime, durationMinutes, endOdometer, totalMileage, endLatitude, endLongitude, endAddress, endReceivedAt: new Date(), endDistanceMeters, arrivedAtDestination });

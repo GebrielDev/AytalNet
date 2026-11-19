@@ -72,7 +72,7 @@ const SERVER_IDS_KEY = 'offlineTrips:serverIds';
 const ACTIVE_KEY = 'offlineTrips:activeTrip';
 const VEHICLE_KEY = 'offlineTrips:assignedVehicle';
 const RECENT_KEY = 'offlineTrips:recentTrips';
-const DESTINATION_KEY = 'offlineTrips:destination';
+const STOPS_KEY = 'offlineTrips:stops';
 
 let currentDriverId: number | null = null;
 const listeners = new Set<(queue: QueuedItem[]) => void>();
@@ -358,28 +358,40 @@ const cachedRead = async <T>(key: string, read: () => Promise<T>, fallback: T): 
   }
 };
 
-const destinationListeners = new Set<(destination: any | null) => void>();
+export interface Stop {
+  id: number;
+  position: number;
+  address: string;
+  note: string | null;
+  arrivedAt: string | null;
+}
 
-/** Screens showing the destination re-render when it changes. */
-export const subscribeToDestination = (listener: (destination: any | null) => void): (() => void) => {
-  destinationListeners.add(listener);
-  return () => destinationListeners.delete(listener);
+const stopListeners = new Set<(stops: Stop[]) => void>();
+
+/** Screens showing the driver's stops re-render when they change. */
+export const subscribeToStops = (listener: (stops: Stop[]) => void): (() => void) => {
+  stopListeners.add(listener);
+  return () => stopListeners.delete(listener);
 };
 
-/** A destination pushed live by the server: saved for offline, then shown. */
-export const setDestinationLocal = async (destination: any | null): Promise<void> => {
-  await writeJson(DESTINATION_KEY, destination);
-  destinationListeners.forEach((listener) => listener(destination));
+/** Stops pushed live by the server (or returned by an arrival): saved, then shown. */
+export const setStopsLocal = async (stops: Stop[]): Promise<void> => {
+  await writeJson(STOPS_KEY, stops);
+  stopListeners.forEach((listener) => listener(stops));
 };
 
-/** The destination saved on the phone (kept current by the live socket). No network. */
-export const getSavedDestination = () => readJson<any>(DESTINATION_KEY, null);
+// Kept on the phone so the stops still show with no signal.
+export const getStops = async (): Promise<Stop[]> => {
+  const stops = await cachedRead<Stop[]>(STOPS_KEY, async () => (await vehiclesApi.getMyStops()).data, []);
+  stopListeners.forEach((listener) => listener(stops));
+  return stops;
+};
 
-// Kept on the phone so the destination still shows with no signal.
-export const getDestination = async () => {
-  const destination = await cachedRead<any>(DESTINATION_KEY, async () => (await vehiclesApi.getMyDestination()).data, null);
-  destinationListeners.forEach((listener) => listener(destination));
-  return destination;
+/** The current stop (first not yet reached), from the phone only. No network. */
+export const getSavedDestination = async () => {
+  const stops = await readJson<Stop[]>(STOPS_KEY, []);
+  const next = stops.find((s) => !s.arrivedAt);
+  return next ? { address: next.address, note: next.note } : null;
 };
 
 export const getAssignedVehicle = () => cachedRead(VEHICLE_KEY, async () => (await vehiclesApi.getMyAssigned()).data, null);
@@ -447,4 +459,4 @@ export const startOfflineSync = (driverId: number | null): (() => void) => {
 };
 
 /** Clears this driver's cached server data on sign-out. The queue is kept. */
-export const clearOfflineCache = () => AsyncStorage.multiRemove([ACTIVE_KEY, VEHICLE_KEY, RECENT_KEY, DESTINATION_KEY]);
+export const clearOfflineCache = () => AsyncStorage.multiRemove([ACTIVE_KEY, VEHICLE_KEY, RECENT_KEY, STOPS_KEY]);
