@@ -11,6 +11,7 @@ import Trips from './pages/Trips';
 import Reports from './pages/Reports';
 import Users from './pages/Users';
 import Coverage from './pages/Coverage';
+import StopsBoard from './pages/StopsBoard';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -48,6 +49,7 @@ export default function App() {
                 <Route path="/trips" element={<Trips />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/coverage" element={<Coverage />} />
+                <Route path="/stops" element={<StopsBoard />} />
                 <Route path="/users" element={<Users />} />
               </Routes>
             </Layout>

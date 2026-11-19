@@ -1,0 +1,54 @@
+{
+  "summary": "Round 7 tested the Stops Progress Board (dashboard /api/dashboard/stops plus GET /api/drivers/stops-board), using both admin and dispatcher logins. Backend: 11/11 new pytest pass. 200 for admin and dispatcher, 403 for a driver token, 401 with no token. Stops come back in position order, done/total add up, only active drivers are listed, activeTrip matches the in_progress trips in the DB, drivers with stops left come first and then go by name, and James and Michael are listed as idle. vitest passes 157/157 and the dashboard typechecks (tsc). UI: the summary reads '3 drivers with stops to visit · 4 stops to go · 0 finished', the Live indicator shows, there are cards for John, Maria and Sarah, progress shows 0/1, 0/1 and 1/3, Zoo is shown arrived (✓ Arrived · 10 m), Chase Field is shown as 'Next stop' and qqzz as 'Not on the map'. show-idle reveals James and Michael; Michael's badge reads 'On trip since 8:30 AM'. Edit opens stops-modal and the Drivers page modal still works. The empty state renders (tested with a mocked [] response). Live updates without a reload: (a) a PUT of Sarah's stops showed up in 0.41 s. (b) Sarah's arrival at Chase Field flashed the card green at once (the flash cleared after 4 s), progress went to 2/3 in 0.42 s, the toast showed 'Sarah Johnson arrived · Chase Field · confirmed by driver · 0 m', and qqzz became 'Next stop · not on the map'. (c) The on-trip badge appeared 0.41 s after a trip started and went away 0.41 s after it ended. Bugs found: (1) HIGH: the board's socket is never reconnected after the server closes it when the token expires, so the board stops updating after about 1 h and shows 'Reconnecting…' forever. (2) MEDIUM: a cancelled trip leaves the on-trip badge stuck. (3) MEDIUM: on mobile (390px) the cards run off the right edge. Data restored: Sarah has Zoo arrived, Chase Field next and qqzz pending, and her destination is Chase Field. The test trips (ids 23 and 24) and their photo rows are deleted. Vehicle 4's odometer is back to 12010. John and Maria were not touched.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/geo/search (round 6 regression)", "issue": "Returns 502 right now because photon.komoot.io cannot be reached from the container (curl gives 000, backend log says '[geo] Address search failed fetch failed'). The outside service or network is down, not this code. The round 6 test test_search_returns_labels_with_coords fails for this reason; the other 9 tests pass."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "StopsBoard socket / Live indicator", "issue": "socket.ts closes dashboard sockets when the token expires with socket.disconnect(true), which the client sees as reason 'io server disconnect'. socket.io-client does NOT reconnect after that kind of close. StopsBoard only calls setLive(false), so it shows 'Reconnecting…' forever and stops getting stops:changed, driver:arrived and trip events. Access tokens last 1 h, so a dispatcher who leaves the board open loses live updates about 1 h after logging in. Reproduced with /app/test_reports/regression/socket_round7_expiry.cjs: a 5 s token gets 'disconnect reason= io server disconnect active= false' and never reconnects, even though a fresh token was available through the auth callback. ArrivalNotices.tsx has the same problem (round 6), so arrival toasts also stop after about 1 h.", "testID": "stops-board-live", "priority": "HIGH"},
+      {"component": "StopsBoard on-trip badge", "issue": "StopsBoard listens for trip:started and trip:ended but not trip:cancelled, which the backend emits from tripController.ts:804. After admin POST /trips/:id/cancel, stops-board-on-trip-4 was still showing 4 s later. Reproduced live.", "testID": "stops-board-on-trip-<id>", "priority": "MEDIUM"},
+      {"component": "StopsBoard cards on mobile", "issue": "At 390px the page scrolls sideways (scrollWidth 401). Every card spans 16 to 401 px and its right border is cut off. Cause: grid items default to min-width:auto, and the 'truncate' address (nowrap) makes the column as wide as the longest address ('Phoenix Sky Harbor International Airport, Phoenix, AZ'). Adding min-w-0 to the card div (stops-board-driver-<id>) brings scrollWidth back to 390 (checked by injecting the style). The Drivers page has no overflow.", "testID": "stops-board-driver-2", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Stops Board", "issues": [
+        "The on-trip badge and the 'Arrived' line show only the time. Michael's trip started 2026-02-08 but shows 'On trip since 8:30 AM', and finished stops from earlier days look like they happened today. Show the date when it is not today.",
+        "Touch targets on mobile are small: stops-board-edit-<id> is 53x16 px and the show-idle checkbox is 16x16 px (minimum is 44 px).",
+        "The overlay behind stops-modal leaves a white strip about 20 px tall at the top of the screen (seen when the modal opens from the board; this is in StopsModal, which existed before this round)."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/regression/test_round7_stops_board.py",
+    "/app/test_reports/regression/socket_round7_expiry.cjs",
+    "/app/test_reports/pytest/round7.xml"
+  ],
+  "action_items": [
+    "HIGH: StopsBoard.tsx and ArrivalNotices.tsx: on 'disconnect' with reason 'io server disconnect', and on a connect_error 'Invalid token', get a fresh access token (call the axios refresh flow or the refresh endpoint) and then call socket.connect(). The auth callback already reads localStorage on each connect. Also have the 'Reconnecting…' label show 'Offline' when socket.active is false, the way Dashboard.tsx does. Re-run socket_round7_expiry.cjs after the fix (it should print PASS).",
+    "MEDIUM: StopsBoard.tsx: add socket.on('trip:cancelled', refresh).",
+    "MEDIUM: StopsBoard.tsx:128-131: add 'min-w-0' to the card className (or use grid-cols-[minmax(0,1fr)]) so long addresses truncate instead of pushing the page wider on mobile.",
+    "LOW: show the date in time() when the date is not today (on-trip badge and Arrived line).",
+    "LOW: make the mobile touch targets bigger (Edit stops button, show-idle label/checkbox)."
+  ],
+  "critical_code_review_comments": [
+    "StopsBoard opens its own socket on top of the global ArrivalNotices socket, so there are 2 sockets per tab (3 on the Dashboard page). Consider one shared socket context.",
+    "The driver:arrived handler's 4 s setTimeout (StopsBoard.tsx:79) is not cleared on unmount. Harmless, but untidy.",
+    "getStopsBoard reads every DriverStop row, including inactive drivers' rows and finished stops kept from earlier days, and matches trips with active.find for each driver. Fine for now; filter by active driver ids and build a Map if the fleet grows.",
+    "The board does not react to drivers being created or deactivated, and has no polling fallback; it only refreshes on the socket events above.",
+    "Backend: the route order (/stops-board before /:id) is correct, requireUser sends drivers a 403, and errors are logged and return 500. Good."
+  ],
+  "updated_files": [
+    "/app/test_reports/regression/test_round7_stops_board.py (new)",
+    "/app/test_reports/regression/socket_round7_expiry.cjs (new)"
+  ],
+  "success_rate": {"backend": "100% (11/11 new pytest, 157/157 vitest; round 6 regression 9/10, the 1 failure is the external Photon outage)", "frontend": "~85% (all requested flows work; 3 bugs: socket never reconnects after token expiry, stale badge after trip cancel, mobile overflow)"},
+  "seed_data_creation": "None kept. Created and deleted: one TEST_ stop on Sarah (removed through PUT); trips 23 (completed) and 24 (cancelled) for Sarah, deleted by id along with their trip_photos rows. The photo files these trips uploaded are still in storage under sts-fleet/trips/ (7 files). Vehicle 4's odometer was reset to 12010. Stop 23's arrival was cleared with psql, then a PUT re-synced Sarah's destination to Chase Field.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: API_BASE=<url>/api pytest /app/test_reports/regression/test_round7_stops_board.py ; BASE=<url> node /app/test_reports/regression/socket_round7_expiry.cjs (signs a 5 s admin JWT with JWT_SECRET from backend/.env and checks whether the socket comes back after the server closes it at expiry; it currently prints FAIL). Live UI checks used page.request (PUT stops, driver login, arrive, multipart trips/start with license_plate/driver_selfie/start_odometer, then trips/:id/photos end_odometer and PUT trips/:id/end). Clean up: in psql fleet_test, delete trip_photos and trips by id, reset vehicles.current_odometer for id 4 (12010), and run 'update driver_stops set arrived_at=NULL, arrived_distance_meters=NULL, trip_id=NULL where id=23', then PUT Sarah's stops [{id:23,...coords},{id:24,'qqzz nowhere 0000'}] so her destination is re-synced. photon.komoot.io could not be reached during this run.",
+  "rca_of_issue": "Socket expiry: socket.ts onDashboardConnection sets a timer that calls socket.disconnect(true) when the token expires. On the client the reason is 'io server disconnect', and socket.io-client deliberately does not reconnect after that, so StopsBoard's default reconnection never runs. Mobile overflow: CSS grid items have min-width:auto, so a nowrap or truncate child sets the track width; adding min-width:0 fixes it."
+}

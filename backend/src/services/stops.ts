@@ -43,6 +43,8 @@ export const syncDriverStops = async (io: Server | undefined, driverId: number) 
     { where: { id: driverId } }
   );
   io?.of('/driver').to(driverRoom(driverId)).emit('stops:updated', stops);
+  // The dashboard's stops board refreshes that driver's row.
+  io?.to('dashboard').emit('stops:changed', { driverId });
   return stops;
 };
 

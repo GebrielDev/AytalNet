@@ -1,0 +1,36 @@
+{
+  "summary": "Round 8 retest of the Stops Board bugs from iteration 6, run in the browser at /api/dashboard/stops as admin. All 3 bugs are fixed and the regressions pass. (1) HIGH, socket rejoin after token expiry, both paths tested live. (a) 'io server disconnect': a 15 s admin JWT was put in localStorage.accessToken along with a real refreshToken. The board showed Live, then 'Reconnecting…' for about 1 s at 16 s, then Live again. There was a single /auth/refresh call (the two sockets share it) and both sockets (StopsBoard and ArrivalNotices) reopened at 16.0 and 16.2 s. A PUT /drivers/4/stops adding a TEST_ stop showed on the card (1/4) 0.84 s later. A second run with a 12 s token showed the arrival toast arriving-notice-23 straight after the rejoin, so the ArrivalNotices socket rejoins too. (b) connect_error 'Invalid token': with the board Live, accessToken was swapped for an expired token that has a valid signature, then fleet-preview-proxy was restarted. socket.io's automatic reconnect at 1.2-1.9 s was refused. At 4.3 s (the 3 s rejoin delay) came /auth/me 401, then /auth/refresh 200, then /auth/me 200, the sockets reopened, and Live was back at 5.06 s. A PUT afterwards updated the card in 0.83 s. A garbage or expired token at page load also reached Live within about 1 s. (2) MEDIUM trip:cancelled: Sarah started a TEST trip (id 26) and the badge showed 'On trip since 1:04 PM'. After admin POST /trips/26/cancel the badge cleared in 0.51 s. (3) MEDIUM mobile: at 390px scrollWidth is 390 (was 401), every card spans 16-374 px, no element overflows, and Maria's long airport address is cut off with an ellipsis. (4) LOW date: Michael's badge reads 'On trip since Feb 8, 8:30 AM'. Regression: Sarah's arrival at Chase Field showed the toast in 0.09 s ('Sarah Johnson arrived · Chase Field, Phoenix, AZ · confirmed by driver · 0 m from the stop'), flashed the card green and moved progress to 2/3 in 0.51 s. tsc is clean and backend vitest passes 157/157. Data restored: Sarah has Zoo arrived, Chase Field next and qqzz pending, and her destination is Chase Field. Trip 26 and its 3 trip_photos rows are deleted by id. Vehicle 4's odometer is 12010. John, Maria and Michael's trip 6 were not touched.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Stops Board (390px)", "issues": [
+        "Touch targets are bigger but still under 44 px: stops-board-edit-<id> is now 69x32 (was 53x16), and the show-idle label is 210x20 with a 16x16 checkbox."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/regression/make_tokens_round8.cjs",
+    "/app/test_reports/regression/socket_round7_expiry.cjs",
+    "/app/test_reports/regression/test_round7_stops_board.py"
+  ],
+  "action_items": [
+    "LOW: StopsBoard.tsx:81-91 and ArrivalNotices.tsx:36-48: the rejoin setTimeouts are not cleared on unmount. If the user leaves the board within 1-3 s of a server close or refused handshake, rejoin() still calls socket.connect() and reopens a socket that nothing will close (its listeners keep calling load and setLive). Keep the timer id and clear it in cleanup, or check a 'disposed' flag before connect(). StopsBoard's cleanup should also call socket.removeAllListeners(), as ArrivalNotices does.",
+    "LOW: the rejoin logic is the same in both components (about 12 lines). Move it into one shared socket hook or context. That would also bring the tab down from 2-3 sockets to 1.",
+    "LOW: the indicator says 'Reconnecting…' forever after an error the code does not retry (for example 'Dashboard access is limited…'). Show 'Offline' when socket.active is false.",
+    "LOW: raise the mobile touch targets to 44 px (Edit stops button, show-idle label)."
+  ],
+  "critical_code_review_comments": [
+    "The rejoin design is sound. The auth callback reads localStorage on every connect. rejoin() makes a REST call, so an expired token goes through the axios refresh flow. Concurrent refreshes are combined into one (seen as a single /auth/refresh for both sockets). If the refresh token is expired, the interceptor sends the user to /login, which stops the loop. A deleted user gets a 401 on the retried request, which clears the tokens and redirects. 'unavailable' (outage) keeps retrying every 3 s, which is acceptable.",
+    "The connect_error regex /token|Authentication|User not found/ also matches 'Authentication required' (no token). That case ends in the interceptor's login redirect, so it cannot loop forever while the page is open.",
+    "Cleanup does not clear the rejoin timers (see action_items). It is minor, but it can leak a socket."
+  ],
+  "updated_files": ["/app/test_reports/regression/make_tokens_round8.cjs (new; signs a short-lived and an expired admin JWT for the browser rejoin tests)"],
+  "success_rate": {"backend": "N/A (frontend retest); vitest 157/157", "frontend": "100% of requested checks (rejoin via both paths, live updates after rejoin, toast after rejoin, trip:cancelled, 390px layout, dated badge, regressions)"},
+  "seed_data_creation": "None kept. A TEST_ stop was added to Sarah twice and removed each time with a PUT. Sarah's arrival at stop 23 was done 2 times and cleared each time with psql (arrived_at, arrived_distance_meters and trip_id set to NULL), followed by a PUT so her destination re-synced to Chase Field. Trip 26 (Sarah, cancelled) and its 3 trip_photos rows were deleted by id. Its 3 photo files are still in storage under sts-fleet/trips/ (51d4e964..., 97ee0de1..., c7d6d5af...). Vehicle 4's odometer is unchanged at 12010. fleet-preview-proxy was restarted twice; it is RUNNING.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "How the rejoin was tested in the browser: SECS=15 node /app/test_reports/regression/make_tokens_round8.cjs prints {short, expired} admin JWTs signed with JWT_SECRET. Put one in localStorage.accessToken with a real refreshToken from POST /auth/login. For 'io server disconnect', wait past the short token's expiry. For connect_error, swap in the expired token while the board is Live, then run 'sudo supervisorctl restart fleet-preview-proxy'. Watch stops-board-live and the /auth/refresh requests. Trip start: POST /trips/start as multipart with payload JSON {vehicleId:4,startOdometer:12010,startLatitude,startLongitude} and the jpeg fields license_plate, driver_selfie and start_odometer. The container clock reads Nov 19 2026."
+}

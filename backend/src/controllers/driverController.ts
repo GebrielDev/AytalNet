@@ -3,7 +3,7 @@ import { Driver, Trip, Vehicle, DriverStop } from '../models';
 import { Op } from 'sequelize';
 import { geocodeAddress } from '../services/geo';
 import sequelize from '../config/database';
-import { listStops, syncDriverStops, markStopArrived } from '../services/stops';
+import { listStops, syncDriverStops, markStopArrived, stopView } from '../services/stops';
 import { distanceMeters, arrivalRadiusMeters } from '../services/geo';
 
 export const getAllDrivers = async (req: Request, res: Response): Promise<void> => {
@@ -353,5 +353,50 @@ export const getMyDestination = async (req: Request, res: Response): Promise<voi
     );
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch destination' });
+  }
+};
+
+/**
+ * Every active driver's stops and progress, for the dashboard's stops board.
+ * Drivers with no stops are included (so the dispatcher can give them some)
+ * after those with work in hand.
+ */
+export const getStopsBoard = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const [drivers, stops, active] = await Promise.all([
+      Driver.findAll({
+        where: { status: 'active' },
+        attributes: ['id', 'name', 'employeeId'],
+        include: [{ model: Vehicle, as: 'assignedVehicle', attributes: ['id', 'plateNumber'] }],
+        order: [['name', 'ASC']],
+      }),
+      DriverStop.findAll({ order: [['position', 'ASC'], ['id', 'ASC']] }),
+      Trip.findAll({ where: { status: 'in_progress' }, attributes: ['id', 'driverId', 'startTime'] }),
+    ]);
+    const byDriver = new Map<number, ReturnType<typeof stopView>[]>();
+    for (const stop of stops) {
+      const list = byDriver.get(stop.driverId) ?? [];
+      list.push(stopView(stop));
+      byDriver.set(stop.driverId, list);
+    }
+    const board = (drivers as any[]).map((d) => {
+      const list = byDriver.get(d.id) ?? [];
+      const trip = active.find((t) => t.driverId === d.id);
+      return {
+        driverId: d.id,
+        name: d.name,
+        employeeId: d.employeeId,
+        plate: d.assignedVehicle?.plateNumber ?? null,
+        activeTrip: trip ? { id: trip.id, startTime: trip.startTime } : null,
+        stops: list,
+        done: list.filter((s) => s.arrivedAt).length,
+        total: list.length,
+      };
+    });
+    board.sort((a, b) => Number(b.total - b.done > 0) - Number(a.total - a.done > 0) || a.name.localeCompare(b.name));
+    res.json(board);
+  } catch (error) {
+    console.error('[stops] Could not build the stops board', error);
+    res.status(500).json({ error: 'Failed to load the stops board' });
   }
 };

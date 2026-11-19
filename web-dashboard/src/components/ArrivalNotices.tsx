@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
+import api from '../services/api';
 
 interface Arrival {
   stopId: number;
@@ -30,7 +31,29 @@ export default function ArrivalNotices() {
       setNotices((list) => [arrival, ...list.filter((n) => n.stopId !== arrival.stopId)].slice(0, 4));
       setTimeout(() => setNotices((list) => list.filter((n) => n.stopId !== arrival.stopId)), 20000);
     });
+    // Rejoin after the server closes the socket at token expiry: a REST call
+    // renews the token via the API client first.
+    // Cleared on unmount, so leaving the page never reopens a socket.
+    const retries: ReturnType<typeof setTimeout>[] = [];
+    let closed = false;
+    const rejoin = async () => {
+      if (closed) return;
+      try {
+        await api.get('/auth/me');
+      } finally {
+        if (!closed) socket.connect();
+      }
+    };
+    socket.on('disconnect', (reason) => {
+      if (reason === 'io server disconnect') retries.push(setTimeout(rejoin, 1000));
+    });
+    socket.on('connect_error', (err) => {
+      if (/token|Authentication|User not found/i.test(err.message)) retries.push(setTimeout(rejoin, 3000));
+    });
     return () => {
+      closed = true;
+      retries.forEach(clearTimeout);
+      socket.removeAllListeners();
       socket.disconnect();
     };
   }, []);

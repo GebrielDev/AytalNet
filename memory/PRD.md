@@ -40,6 +40,8 @@ a Node/Express/PostgreSQL backend on Railway, a React web dashboard, and an Expo
 - 2026-06: Multi-stop jobs. A `driver_stops` table with `GET/PUT /api/drivers/:id/stops`, `GET /api/drivers/my-stops` and `POST /api/drivers/my-stops/:id/arrive` (checked against the 300 m radius). The current stop is copied onto the driver's destination fields, and the app shows StopsCard: Navigate on every stop, "I've arrived" on the next. Stop changes reach the phone live via `stops:updated`.
 - 2026-06: Arrival notices. A dashboard-wide toast (ArrivalNotices) listens for socket `driver:arrived`, sent when the driver taps "I've arrived" or ends a trip within range of a stop.
 
+- 2026-06: Stops board. A dashboard /stops page (`GET /api/drivers/stops-board`) shows every active driver's stops, progress and trip status. It updates live from socket `stops:changed`, `driver:arrived` and the trip events.
+
 ## Known limits
 - The preview test copy (Postgres plus the supervisor program) is lost when the container restarts and has to be set up again.
 - The live server needs this backend deployed to Railway, with `PHOTO_STORAGE=emergent`, `EMERGENT_LLM_KEY` and `PUBLIC_API_URL`, before the new app build ships.
