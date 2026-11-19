@@ -24,13 +24,54 @@ interface Trip {
   driver: { name: string; employeeId: string };
   vehicle: { plateNumber: string; make: string; model: string };
   photos: { id: number; photoType: string; photoUrl: string }[];
+  createdAt?: string;
+  endReceivedAt?: string;
+  clientRef?: string | null;
+}
+
+// Matches LATE_ARRIVAL_MINUTES on the server: a start or end that reached the
+// office this long after it happened was recorded on a phone with no signal.
+const LATE_ARRIVAL_MINUTES = 5;
+
+const minutesLate = (happened?: string, arrived?: string): number | null => {
+  if (!happened || !arrived) return null;
+  const late = Math.round((new Date(arrived).getTime() - new Date(happened).getTime()) / 60000);
+  return late > LATE_ARRIVAL_MINUTES ? late : null;
+};
+
+const formatLate = (minutes: number): string =>
+  minutes < 60 ? `${minutes} min` : minutes < 1440 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${Math.floor(minutes / 1440)} d ${Math.floor((minutes % 1440) / 60)} h`;
+
+/** How late the start and end of a trip reached the office, if either was. */
+const offlineInfo = (trip: Trip) => {
+  // Only the current driver app records a clientRef, and with it a reliable
+  // arrival time; older and seeded trips are never flagged.
+  if (!trip.clientRef) return null;
+  const startLate = minutesLate(trip.startTime, trip.createdAt);
+  const endLate = minutesLate(trip.endTime, trip.endReceivedAt);
+  return startLate == null && endLate == null ? null : { startLate, endLate };
+};
+
+function OfflineBadge({ trip }: { trip: Trip }) {
+  const info = offlineInfo(trip);
+  if (!info) return null;
+  const latest = Math.max(info.startLate ?? 0, info.endLate ?? 0);
+  return (
+    <span
+      data-testid={`trip-offline-badge-${trip.id}`}
+      title="Recorded on the driver's phone without signal and sent later"
+      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 whitespace-nowrap"
+    >
+      Offline · arrived {formatLate(latest)} later
+    </span>
+  );
 }
 
 export default function Trips() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
-  const [filter, setFilter] = useState({ status: '', startDate: '', endDate: '' });
+  const [filter, setFilter] = useState({ status: '', startDate: '', endDate: '', recordedOffline: '' });
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -40,7 +81,7 @@ export default function Trips() {
 
   const fetchTrips = async () => {
     try {
-      const params = { page, limit: 20, ...filter };
+      const params = { page, limit: 20, ...Object.fromEntries(Object.entries(filter).filter(([, v]) => v)) };
       const res = await tripsApi.getAll(params);
       setTrips(res.data.trips);
       setTotalPages(res.data.pagination.totalPages);
@@ -99,7 +140,17 @@ export default function Trips() {
           <label className="block text-xs font-medium text-gray-500 mb-1">To</label>
           <input type="date" value={filter.endDate} onChange={(e) => setFilter({ ...filter, endDate: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
         </div>
-        <button onClick={() => { setFilter({ status: '', startDate: '', endDate: '' }); setPage(1); }} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">Clear</button>
+        <label className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            data-testid="trips-filter-recorded-offline"
+            checked={filter.recordedOffline === 'true'}
+            onChange={(e) => { setFilter({ ...filter, recordedOffline: e.target.checked ? 'true' : '' }); setPage(1); }}
+            className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+          />
+          Recorded offline only
+        </label>
+        <button onClick={() => { setFilter({ status: '', startDate: '', endDate: '', recordedOffline: '' }); setPage(1); }} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">Clear</button>
       </div>
 
       {/* Desktop table */}
@@ -120,7 +171,7 @@ export default function Trips() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {trips.map((trip) => (
-                <tr key={trip.id} className="hover:bg-gray-50/50 transition-colors">
+                <tr key={trip.id} data-testid={`trip-row-${trip.id}`} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-5 py-3.5 text-sm font-medium text-gray-900">#{trip.id}</td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2">
@@ -133,10 +184,13 @@ export default function Trips() {
                   <td className="px-5 py-3.5 text-sm text-gray-600">{trip.durationMinutes ? `${trip.durationMinutes} min` : '-'}</td>
                   <td className="px-5 py-3.5 text-sm text-gray-600">{trip.totalMileage ? `${trip.totalMileage} mi` : '-'}</td>
                   <td className="px-5 py-3.5">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(trip.status)}`}>{trip.status.replace(/_/g, ' ')}</span>
+                    <div className="flex flex-col items-start gap-1">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(trip.status)}`}>{trip.status.replace(/_/g, ' ')}</span>
+                      <OfflineBadge trip={trip} />
+                    </div>
                   </td>
                   <td className="px-5 py-3.5 text-sm space-x-2">
-                    <button onClick={() => setSelectedTrip(trip)} className="text-blue-600 hover:text-blue-800 font-medium">View</button>
+                    <button data-testid={`trip-view-${trip.id}`} onClick={() => setSelectedTrip(trip)} className="text-blue-600 hover:text-blue-800 font-medium">View</button>
                     {trip.status === 'in_progress' && (
                       <button onClick={() => handleCancel(trip.id)} className="text-red-600 hover:text-red-800 font-medium">Cancel</button>
                     )}
@@ -166,7 +220,10 @@ export default function Trips() {
                   <p className="text-xs text-gray-500">#{trip.id}</p>
                 </div>
               </div>
-              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(trip.status)}`}>{trip.status.replace(/_/g, ' ')}</span>
+              <div className="flex flex-col items-end gap-1">
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(trip.status)}`}>{trip.status.replace(/_/g, ' ')}</span>
+                <OfflineBadge trip={trip} />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
               <div><span className="font-medium text-gray-700">Vehicle:</span> {trip.vehicle?.plateNumber}</div>
@@ -213,6 +270,12 @@ export default function Trips() {
                   ['Total Mileage', selectedTrip.totalMileage ? `${selectedTrip.totalMileage} mi` : '-'],
                   ['Start Time', new Date(selectedTrip.startTime).toLocaleString()],
                   ...(selectedTrip.endTime ? [['End Time', new Date(selectedTrip.endTime).toLocaleString()]] : []),
+                  ...(offlineInfo(selectedTrip)?.startLate != null && selectedTrip.createdAt
+                    ? [['Start reached office', `${new Date(selectedTrip.createdAt).toLocaleString()} (recorded offline, ${formatLate(offlineInfo(selectedTrip)!.startLate!)} later)`]]
+                    : []),
+                  ...(offlineInfo(selectedTrip)?.endLate != null && selectedTrip.endReceivedAt
+                    ? [['End reached office', `${new Date(selectedTrip.endReceivedAt).toLocaleString()} (recorded offline, ${formatLate(offlineInfo(selectedTrip)!.endLate!)} later)`]]
+                    : []),
                 ].map(([label, value]) => (
                   <div key={label as string} className="bg-gray-50 rounded-lg p-3">
                     <p className="text-xs text-gray-500 mb-0.5">{label}</p>

@@ -85,7 +85,7 @@ api.interceptors.response.use(
       // request.
       if (error.response?.status === 401 && original?._retried) {
         clearTokens();
-        window.location.href = '/login';
+        window.location.href = `${import.meta.env.BASE_URL}login`;
       }
       return Promise.reject(error);
     }
@@ -94,7 +94,7 @@ api.interceptors.response.use(
     const result = await refresher.refresh();
 
     if (result.status === 'expired') {
-      window.location.href = '/login';
+      window.location.href = `${import.meta.env.BASE_URL}login`;
       return Promise.reject(error);
     }
 

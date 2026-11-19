@@ -1,6 +1,11 @@
 import { Request, Response } from 'express';
 import { Trip, TripPhoto, Driver, Vehicle } from '../models';
-import { Op } from 'sequelize';
+import { Op, literal } from 'sequelize';
+
+// How late a start or end may reach the server before the dashboard calls the
+// trip "recorded offline". Generous, so a slow upload or a phone clock a
+// little out is not mistaken for one. The dashboard uses the same figure.
+export const LATE_ARRIVAL_MINUTES = 5;
 import cloudinary from '../config/cloudinary';
 import { usesEmergentStorage, storePhotoInEmergent, erasePhoto } from '../config/photoStorage';
 
@@ -45,8 +50,20 @@ const uploadBufferToCloudinary = (
 
 export const getAllTrips = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { status, driverId, vehicleId, startDate, endDate, page = 1, limit = 20 } = req.query;
+    const { status, driverId, vehicleId, startDate, endDate, recordedOffline, page = 1, limit = 20 } = req.query;
     const where: any = {};
+
+    // Trips whose start or end reached the server well after it happened -
+    // recorded on a phone with no signal and sent later.
+    if (recordedOffline === 'true') {
+      where[Op.and] = literal(
+        // Only trips sent by the current driver app carry a clientRef. Older
+        // trips, seeded data and anything imported have no reliable arrival
+        // time to compare, so they are never flagged.
+        `("Trip"."client_ref" IS NOT NULL AND ("Trip"."created_at" - "Trip"."start_time" > interval '${LATE_ARRIVAL_MINUTES} minutes'` +
+          ` OR "Trip"."end_received_at" - "Trip"."end_time" > interval '${LATE_ARRIVAL_MINUTES} minutes'))`
+      );
+    }
 
     if (status) where.status = status;
     if (driverId) where.driverId = driverId;
@@ -59,6 +76,8 @@ export const getAllTrips = async (req: Request, res: Response): Promise<void> =>
 
     const offset = (Number(page) - 1) * Number(limit);
     const { count, rows: trips } = await Trip.findAndCountAll({
+      // Count trips, not the joined photo rows - those inflated the page count.
+      distinct: true,
       where,
       include: [
         { model: Driver, as: 'driver', attributes: ['id', 'name', 'employeeId'] },
@@ -554,7 +573,7 @@ export const endTrip = async (req: Request, res: Response): Promise<void> => {
     const durationMinutes = Math.round((endTime.getTime() - trip.startTime.getTime()) / 60000);
     const totalMileage = endOdometer - Number(trip.startOdometer);
 
-    await trip.update({ status: 'completed', endTime, durationMinutes, endOdometer, totalMileage, endLatitude, endLongitude, endAddress });
+    await trip.update({ status: 'completed', endTime, durationMinutes, endOdometer, totalMileage, endLatitude, endLongitude, endAddress, endReceivedAt: new Date() });
     await Vehicle.update({ currentOdometer: endOdometer }, { where: { id: trip.vehicleId } });
 
     const io = req.app.get('io');

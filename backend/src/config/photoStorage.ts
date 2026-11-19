@@ -78,20 +78,27 @@ const extensionFor = (mimetype: string): string =>
  * wins; otherwise it is derived from the request, honouring the proxy's
  * forwarded protocol so a Railway deployment does not hand out http:// links.
  */
-const publicApiBase = (req: Request): string => {
+export const publicApiBase = (req: Request): string => {
   if (process.env.PUBLIC_API_URL) return process.env.PUBLIC_API_URL.replace(/\/+$/, '');
   const forwarded = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
   return `${forwarded || req.protocol}://${req.get('host')}/api`;
 };
 
 /** Stores one photo and returns the URL the API and dashboard use for it. */
-export const storePhotoInEmergent = async (
+export const storePhotoInEmergent = (
   file: Express.Multer.File,
   req: Request
+): Promise<{ photoUrl: string; objectPath: string }> => storePhotoBuffer(file.buffer, file.mimetype, publicApiBase(req));
+
+/** Same, for callers without a request (the photo migration script). */
+export const storePhotoBuffer = async (
+  data: Buffer,
+  mimetype: string,
+  apiBase: string
 ): Promise<{ photoUrl: string; objectPath: string }> => {
-  const objectPath = `${APP_PREFIX}/${uuidv4()}.${extensionFor(file.mimetype)}`;
-  await putObject(objectPath, file.buffer, file.mimetype);
-  return { photoUrl: `${publicApiBase(req)}/files/${objectPath}`, objectPath };
+  const objectPath = `${APP_PREFIX}/${uuidv4()}.${extensionFor(mimetype)}`;
+  await putObject(objectPath, data, mimetype);
+  return { photoUrl: `${apiBase.replace(/\/+$/, '')}/files/${objectPath}`, objectPath };
 };
 
 /** The object path inside a photo URL this module produced, or null. */

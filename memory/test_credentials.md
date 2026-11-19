@@ -10,3 +10,5 @@ Driver app logins (password for all: DriverTest123!)
 Dashboard logins
 - admin@fleet.com / AdminTest123!
 - dispatcher@fleet.com / DispatchTest123!
+
+Web dashboard (test copy): https://162fb2ea-1243-4414-ad3a-72d383847f45.preview.emergentagent.com/api/dashboard/

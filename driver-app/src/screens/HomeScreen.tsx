@@ -3,13 +3,14 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Scr
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import PendingTrips from '../components/PendingTrips';
-import { getActiveTrip, getAssignedVehicle, getRecentTrips, loadQueue, subscribeToQueue } from '../services/offlineTrips';
+import { getActiveTrip, getAssignedVehicle, getRecentTrips, loadQueue, subscribeToQueue, type TripHistory } from '../services/offlineTrips';
 
 export default function HomeScreen() {
   const { driver, logout } = useAuth();
   const navigation = useNavigation<any>();
   const [activeTrip, setActiveTrip] = useState<any>(null);
   const [recentTrips, setRecentTrips] = useState<any[]>([]);
+  const [history, setHistory] = useState<Omit<TripHistory, 'trips'>>({ offline: false, savedAt: null });
   const [loading, setLoading] = useState(true);
 
   const route = useRoute<any>();
@@ -21,9 +22,10 @@ export default function HomeScreen() {
     setLoading(true);
     // The vehicle is fetched here too so Start Trip still knows it if the
     // signal drops before the driver opens that screen.
-    const [active, trips] = await Promise.all([getActiveTrip(), getRecentTrips(), getAssignedVehicle()]);
+    const [active, recent] = await Promise.all([getActiveTrip(), getRecentTrips(), getAssignedVehicle()]);
     setActiveTrip(active);
-    setRecentTrips(trips);
+    setRecentTrips(recent.trips);
+    setHistory({ offline: recent.offline, savedAt: recent.savedAt });
     setLoading(false);
   };
 
@@ -37,9 +39,10 @@ export default function HomeScreen() {
   // "will be sent" notice goes once nothing is waiting.
   useEffect(() => subscribeToQueue((queue) => {
     if (queue.length === 0) navigation.setParams({ notice: undefined });
-    Promise.all([getActiveTrip(), getRecentTrips()]).then(([active, trips]) => {
+    Promise.all([getActiveTrip(), getRecentTrips()]).then(([active, recent]) => {
       setActiveTrip(active);
-      setRecentTrips(trips);
+      setRecentTrips(recent.trips);
+      setHistory({ offline: recent.offline, savedAt: recent.savedAt });
     });
   }), []);
 
@@ -147,7 +150,22 @@ export default function HomeScreen() {
         <Text style={styles.newTripBtnText}>{activeTrip ? 'End Current Trip First' : '+ Start New Trip'}</Text>
       </TouchableOpacity>
 
-      <Text style={styles.sectionTitle}>Completed Trips</Text>
+      <View style={styles.historyHeader}>
+        <Text style={styles.sectionTitle}>Completed Trips</Text>
+        {recentTrips.length > 0 ? (
+          <Text style={styles.totalMiles} testID="home-history-total-miles">
+            {recentTrips.reduce(function (sum: number, t: any) { return sum + (Number(t.totalMileage) || 0); }, 0).toFixed(1) + ' mi · last ' + recentTrips.length + ' trips'}
+          </Text>
+        ) : null}
+      </View>
+
+      {history.offline ? (
+        <View style={styles.offlineBanner} testID="home-history-offline-banner">
+          <Text style={styles.offlineText}>
+            {'No signal - showing trips saved on this phone' + (history.savedAt ? ' (updated ' + fmtDate(history.savedAt) + ' ' + fmtTime(history.savedAt) + ')' : '') + '.'}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.table}>
         <View style={styles.tableHeaderRow}>
@@ -180,6 +198,7 @@ export default function HomeScreen() {
             <View key={key} style={rowStyle} testID={'home-completed-trip-' + key}>
               <View style={styles.colDate}>
                 <Text style={styles.cellMain}>{fmtDate(t.endTime)}</Text>
+                {t.pending ? <Text style={styles.pendingTag} testID={'home-history-' + key}>Waiting to send</Text> : null}
                 <Text style={styles.cellSub}>{fmtTime(t.startTime) + ' - ' + fmtTime(t.endTime)}</Text>
               </View>
               <View style={styles.colVehicle}>
@@ -222,7 +241,12 @@ var styles = StyleSheet.create({
   newTripBtnDisabled: { backgroundColor: '#93c5fd', paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginBottom: 28 },
   newTripBtnText: { color: '#fff', fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
 
-  sectionTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a', marginBottom: 12, letterSpacing: -0.2 },
+  sectionTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a', letterSpacing: -0.2 },
+  historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 },
+  totalMiles: { fontSize: 13, fontWeight: '600', color: '#64748b' },
+  offlineBanner: { backgroundColor: '#f1f5f9', borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0' },
+  offlineText: { fontSize: 13, color: '#475569' },
+  pendingTag: { fontSize: 10, fontWeight: '700', color: '#b45309', marginTop: 2 },
 
   table: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#e2e8f0' },
   tableHeaderRow: { flexDirection: 'row', backgroundColor: '#f8fafc', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },

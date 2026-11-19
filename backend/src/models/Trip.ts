@@ -27,11 +27,14 @@ interface TripAttributes {
   // Set by the driver app on every start. Lets a start recorded offline be
   // re-sent any number of times and still create exactly one trip.
   clientRef?: string | null;
+  // When the end reached the server. Far after endTime means it was recorded
+  // offline; created_at plays the same part for the start.
+  endReceivedAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface TripCreationAttributes extends Optional<TripAttributes, 'id' | 'status' | 'endTime' | 'durationMinutes' | 'endOdometer' | 'totalMileage' | 'startAddress' | 'endLatitude' | 'endLongitude' | 'endAddress' | 'clientRef' | 'createdAt' | 'updatedAt'> {}
+interface TripCreationAttributes extends Optional<TripAttributes, 'id' | 'status' | 'endTime' | 'durationMinutes' | 'endOdometer' | 'totalMileage' | 'startAddress' | 'endLatitude' | 'endLongitude' | 'endAddress' | 'clientRef' | 'endReceivedAt' | 'createdAt' | 'updatedAt'> {}
 
 class Trip extends Model<TripAttributes, TripCreationAttributes> implements TripAttributes {
   public id!: number;
@@ -51,6 +54,7 @@ class Trip extends Model<TripAttributes, TripCreationAttributes> implements Trip
   public endLongitude?: number;
   public endAddress?: string;
   public clientRef?: string | null;
+  public endReceivedAt?: Date;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -134,6 +138,11 @@ Trip.init(
       allowNull: true,
       unique: true,
       field: 'client_ref',
+    },
+    endReceivedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'end_received_at',
     },
   },
   {

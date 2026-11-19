@@ -167,6 +167,9 @@ export default function Dashboard() {
     // user token, so the feed must present one. The dashboard room is joined
     // server-side once that check passes; there is nothing to emit here.
     const socket: Socket = io(SOCKET_URL, {
+      // Only differs when the dashboard is served behind a proxy that moves
+      // socket.io off its default path (the preview test copy does).
+      path: import.meta.env.VITE_SOCKET_PATH || '/socket.io',
       auth: { token: localStorage.getItem('accessToken') },
     });
 

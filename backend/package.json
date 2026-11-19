@@ -18,7 +18,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "retention": "node dist/scripts/retention.js",
-    "retention:dev": "ts-node src/scripts/retention.ts"
+    "retention:dev": "ts-node src/scripts/retention.ts",
+    "photos:migrate": "node dist/scripts/migratePhotos.js",
+    "photos:migrate:dev": "ts-node src/scripts/migratePhotos.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

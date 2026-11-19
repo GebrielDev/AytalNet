@@ -356,11 +356,47 @@ const cachedRead = async <T>(key: string, read: () => Promise<T>, fallback: T): 
 
 export const getAssignedVehicle = () => cachedRead(VEHICLE_KEY, async () => (await vehiclesApi.getMyAssigned()).data, null);
 
-export const getRecentTrips = () =>
-  cachedRead<any[]>(RECENT_KEY, async () => {
+export interface TripHistory {
+  trips: any[];
+  // True when the server could not be reached and the list is the copy saved
+  // on the phone the last time it could.
+  offline: boolean;
+  savedAt: string | null;
+}
+
+/**
+ * The driver's recent completed trips with their mileage. With no signal it
+ * is the copy saved at the last successful fetch, and trips completed on the
+ * phone but not yet sent are listed first, marked pending.
+ */
+export const getRecentTrips = async (): Promise<TripHistory> => {
+  const queue = await loadQueue();
+  const waiting = queue
+    .filter((q): q is QueuedEnd => q.kind === 'end')
+    .reverse()
+    .map((q) => ({
+      id: `pending-${q.clientRef}`,
+      pending: true,
+      startTime: q.startedAt,
+      endTime: q.endedAt,
+      durationMinutes: Math.max(0, Math.round((new Date(q.endedAt).getTime() - new Date(q.startedAt).getTime()) / 60000)),
+      totalMileage: q.endOdometer - q.startOdometer,
+      vehicle: q.vehicle,
+    }));
+
+  try {
     const data = (await tripsApi.getMyTrips()).data;
-    return Array.isArray(data) ? data : [];
-  }, []);
+    const trips = Array.isArray(data) ? data : [];
+    const savedAt = new Date().toISOString();
+    await writeJson(RECENT_KEY, { trips, savedAt });
+    return { trips: [...waiting, ...trips], offline: false, savedAt };
+  } catch (error: any) {
+    const saved = await readJson<{ trips: any[]; savedAt: string | null } | any[]>(RECENT_KEY, { trips: [], savedAt: null });
+    // Copies saved by the previous build were a bare array.
+    const copy = Array.isArray(saved) ? { trips: saved, savedAt: null } : saved;
+    return { trips: [...waiting, ...copy.trips], offline: !error?.response, savedAt: copy.savedAt };
+  }
+};
 
 /**
  * Called by AuthProvider with the signed-in driver (or null on sign-out).

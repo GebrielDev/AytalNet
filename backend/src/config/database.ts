@@ -82,6 +82,12 @@ export const connectDatabase = async (): Promise<void> => {
     } catch (migrationError) {
       console.log('Migration note (trips.client_ref):', (migrationError as Error).message);
     }
+    try {
+      await sequelize.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS end_received_at TIMESTAMP WITH TIME ZONE;');
+      console.log('Migration: trips.end_received_at column ensured');
+    } catch (migrationError) {
+      console.log('Migration note (trips.end_received_at):', (migrationError as Error).message);
+    }
 
     await sequelize.sync();
     console.log('Database models synchronized');

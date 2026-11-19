@@ -2,6 +2,8 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_URL: string;
+  readonly VITE_SOCKET_PATH?: string;
+  readonly BASE_URL: string;
 }
 
 interface ImportMeta {
