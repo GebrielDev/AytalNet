@@ -37,6 +37,7 @@ export default function LoginScreen() {
       <View style={styles.form}>
         <TextInput
           style={styles.input}
+          testID="login-email-input"
           placeholder="Email"
           placeholderTextColor="rgba(255,255,255,0.35)"
           value={email}
@@ -46,13 +47,14 @@ export default function LoginScreen() {
         />
         <TextInput
           style={styles.input}
+          testID="login-password-input"
           placeholder="Password"
           placeholderTextColor="rgba(255,255,255,0.35)"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
         />
-        <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
+        <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading} testID="login-submit-button">
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (

@@ -74,6 +74,15 @@ export const connectDatabase = async (): Promise<void> => {
       console.log('Migration note (drivers.deactivated_at):', (migrationError as Error).message);
     }
 
+    // Offline starts from the driver app carry a client reference so a re-sent
+    // start is recognised instead of creating a second trip.
+    try {
+      await sequelize.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS client_ref VARCHAR(64) UNIQUE;');
+      console.log('Migration: trips.client_ref column ensured');
+    } catch (migrationError) {
+      console.log('Migration note (trips.client_ref):', (migrationError as Error).message);
+    }
+
     await sequelize.sync();
     console.log('Database models synchronized');
   } catch (error) {

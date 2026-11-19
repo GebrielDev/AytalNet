@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView,
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { vehiclesApi, tripsApi } from '../services/api';
+import { getAssignedVehicle, keepPhoto, submitStart } from '../services/offlineTrips';
 
 export default function StartTripScreen() {
   const navigation = useNavigation<any>();
@@ -28,8 +28,8 @@ export default function StartTripScreen() {
 
   const fetchAssignedVehicle = async () => {
     try {
-      const res = await vehiclesApi.getMyAssigned();
-      setAssignedVehicle(res.data);
+      // Falls back to the last vehicle the server reported when out of signal.
+      setAssignedVehicle(await getAssignedVehicle());
     } catch (error) {
       console.log('Failed to fetch assigned vehicle');
     } finally {
@@ -51,28 +51,6 @@ export default function StartTripScreen() {
       else if (type === 'odometer') setOdometerPhoto(uri);
       else setPassengerPhoto(uri);
     }
-  };
-
-  /**
-   * Asks the server for this driver's active trip, up to `attempts` times two
-   * seconds apart. Returns the trip, null when the server answered that there
-   * is none, or undefined when no attempt got an answer at all.
-   */
-  const findActiveTrip = async (attempts: number): Promise<any | null | undefined> => {
-    let answered = false;
-    for (let attempt = 0; attempt < attempts; attempt++) {
-      if (attempt > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-      }
-      try {
-        const res = await tripsApi.getActiveTrip();
-        answered = true;
-        if (res.data) return res.data;
-      } catch (_lookupErr) {
-        // Keep trying; the outcome is reported once every attempt is spent.
-      }
-    }
-    return answered ? null : undefined;
   };
 
   const startTrip = async () => {
@@ -101,89 +79,54 @@ export default function StartTripScreen() {
       const location = await Location.getCurrentPositionAsync({});
 
       /**
-       * One request creates the trip and stores its photographs together.
-       *
-       * This used to be a POST that created the trip followed by four separate
-       * uploads. An upload that failed part way through left a trip in progress
-       * with some or none of its photos, showed the driver "Failed to start
-       * trip", and then blocked the retry with "You already have an active
-       * trip". Sending them together means a failure here starts no trip at
-       * all, so retrying is always safe.
-       *
-       * The readings go in one JSON field because multipart would turn them
-       * into strings, which the API rejects on purpose.
+       * The start is saved on the phone first and then sent (see
+       * services/offlineTrips). With signal this is one request that creates
+       * the trip and its photographs together, as before. Without signal the
+       * trip begins here and is sent automatically once the phone is back
+       * online. Every send carries the same clientRef, so a retry after a
+       * dropped connection can never create a second trip.
        */
-      const formData = new FormData();
-      formData.append(
-        'payload',
-        JSON.stringify({
-          vehicleId: assignedVehicle.id,
-          startOdometer: odometerValue,
-          startLatitude: location.coords.latitude,
-          startLongitude: location.coords.longitude,
-        })
-      );
+      const outcome = await submitStart({
+        vehicle: {
+          id: assignedVehicle.id,
+          plateNumber: assignedVehicle.plateNumber,
+          make: assignedVehicle.make,
+          model: assignedVehicle.model,
+        },
+        startedAt: new Date().toISOString(),
+        startOdometer: odometerValue,
+        startLatitude: location.coords.latitude,
+        startLongitude: location.coords.longitude,
+        photos: {
+          license_plate: keepPhoto(licensePlatePhoto, 'license_plate'),
+          driver_selfie: keepPhoto(selfiePhoto, 'driver_selfie'),
+          start_odometer: keepPhoto(odometerPhoto, 'start_odometer'),
+          // Optional: not every trip has a passenger, and a photo of one needs
+          // their knowledge. The server stores it with the trip when it is sent.
+          ...(passengerPhoto ? { passenger: keepPhoto(passengerPhoto, 'passenger') } : {}),
+        },
+      });
 
-      const attach = (photoType: string, uri: string) => {
-        formData.append(photoType, {
-          uri,
-          type: 'image/jpeg',
-          name: `${photoType}.jpg`,
-        } as any);
-      };
-
-      attach('license_plate', licensePlatePhoto);
-      attach('driver_selfie', selfiePhoto);
-      attach('start_odometer', odometerPhoto);
-      // Optional: not every trip has a passenger, and a photo of one needs
-      // their knowledge. The server stores it with the trip when it is sent.
-      if (passengerPhoto) {
-        attach('passenger', passengerPhoto);
-      }
-
-      const tripRes = await tripsApi.start(formData);
-
-      navigation.replace('ActiveTrip', { trip: tripRes.data });
-    } catch (error: any) {
-      /**
-       * Whatever went wrong, first find out whether a trip now exists, and if
-       * one does, take the driver to it. Two cases make that necessary:
-       *
-       * - No reply at all. The connection dropped, but the server keeps
-       *   working on a request after that - four photo uploads take seconds -
-       *   so the trip may commit after the failure reached this screen. One
-       *   immediate lookup can miss it, so look a few times.
-       * - "You already have an active trip". A retry after the case above
-       *   lands here. Showing that as an error left the driver stuck with a
-       *   trip they could not reach; opening it is the recovery.
-       *
-       * The second is what closes the lockout for good: however the timing
-       * falls, a retry now always ends on the trip.
-       */
-      const serverReplied = Boolean(error.response);
-      const existing = await findActiveTrip(serverReplied ? 1 : 4);
-
-      if (existing) {
-        navigation.replace('ActiveTrip', { trip: existing });
+      if (outcome.status === 'rejected') {
+        // The server answered with an error, so no trip was started.
+        Alert.alert('Error', outcome.error);
         return;
       }
 
-      if (existing === undefined) {
-        // Every lookup failed, so whether a trip started is genuinely unknown
-        // and this must not claim either way.
-        Alert.alert(
-          'Error',
-          'Could not reach the server, so it is unclear whether the trip started. Check your connection and reopen the app before trying again.'
-        );
-      } else if (serverReplied) {
-        // The start is atomic, so a reply with an error left nothing behind.
-        Alert.alert(
-          'Error',
-          error.response.data?.error || 'Failed to start trip. No trip was started, so you can try again.'
-        );
-      } else {
-        Alert.alert('Error', 'Could not reach the server. No trip was started, so you can try again.');
-      }
+      const trip =
+        outcome.status === 'sent' && outcome.trip
+          ? { ...outcome.trip, vehicle: outcome.trip.vehicle ?? assignedVehicle }
+          : {
+              clientRef: outcome.clientRef,
+              pending: true,
+              vehicleId: assignedVehicle.id,
+              vehicle: assignedVehicle,
+              startTime: new Date().toISOString(),
+              startOdometer: odometerValue,
+            };
+      navigation.replace('ActiveTrip', { trip });
+    } catch (error: any) {
+      Alert.alert('Error', 'Could not start the trip. Check that location is turned on and try again.');
     } finally {
       setLoading(false);
     }
@@ -214,13 +157,13 @@ export default function StartTripScreen() {
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.sectionTitle}>Assigned Vehicle</Text>
-      <View style={styles.vehicleCard}>
+      <View style={styles.vehicleCard} testID="start-assigned-vehicle">
         <Text style={styles.vehiclePlate}>{assignedVehicle.plateNumber}</Text>
         <Text style={styles.vehicleInfo}>{assignedVehicle.make} {assignedVehicle.model}</Text>
       </View>
 
       <Text style={styles.sectionTitle}>License Plate Photo *</Text>
-      <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('license_plate')}>
+      <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('license_plate')} testID="start-license-plate-photo">
         {licensePlatePhoto ? (
           <Image source={{ uri: licensePlatePhoto }} style={styles.photoPreview} />
         ) : (
@@ -231,6 +174,7 @@ export default function StartTripScreen() {
       <Text style={styles.sectionTitle}>Odometer Reading *</Text>
       <TextInput
         style={styles.input}
+        testID="start-odometer-input"
         placeholder="Enter current odometer"
         value={odometer}
         onChangeText={setOdometer}
@@ -238,7 +182,7 @@ export default function StartTripScreen() {
       />
 
       <Text style={styles.sectionTitle}>Driver Selfie *</Text>
-      <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('selfie')}>
+      <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('selfie')} testID="start-selfie-photo">
         {selfiePhoto ? (
           <Image source={{ uri: selfiePhoto }} style={styles.photoPreview} />
         ) : (
@@ -247,7 +191,7 @@ export default function StartTripScreen() {
       </TouchableOpacity>
 
       <Text style={styles.sectionTitle}>Odometer Photo *</Text>
-      <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('odometer')}>
+      <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('odometer')} testID="start-odometer-photo">
         {odometerPhoto ? (
           <Image source={{ uri: odometerPhoto }} style={styles.photoPreview} />
         ) : (
@@ -256,7 +200,7 @@ export default function StartTripScreen() {
       </TouchableOpacity>
 
       <Text style={styles.sectionTitle}>Passenger Photo (Optional)</Text>
-      <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('passenger')}>
+      <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('passenger')} testID="start-passenger-photo">
         {passengerPhoto ? (
           <Image source={{ uri: passengerPhoto }} style={styles.photoPreview} />
         ) : (
@@ -264,7 +208,7 @@ export default function StartTripScreen() {
         )}
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.startButton} onPress={startTrip} disabled={loading}>
+      <TouchableOpacity style={styles.startButton} onPress={startTrip} disabled={loading} testID="start-trip-submit">
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (

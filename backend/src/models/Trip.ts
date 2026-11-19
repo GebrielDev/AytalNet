@@ -24,11 +24,14 @@ interface TripAttributes {
   endLatitude?: number;
   endLongitude?: number;
   endAddress?: string;
+  // Set by the driver app on every start. Lets a start recorded offline be
+  // re-sent any number of times and still create exactly one trip.
+  clientRef?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface TripCreationAttributes extends Optional<TripAttributes, 'id' | 'status' | 'endTime' | 'durationMinutes' | 'endOdometer' | 'totalMileage' | 'startAddress' | 'endLatitude' | 'endLongitude' | 'endAddress' | 'createdAt' | 'updatedAt'> {}
+interface TripCreationAttributes extends Optional<TripAttributes, 'id' | 'status' | 'endTime' | 'durationMinutes' | 'endOdometer' | 'totalMileage' | 'startAddress' | 'endLatitude' | 'endLongitude' | 'endAddress' | 'clientRef' | 'createdAt' | 'updatedAt'> {}
 
 class Trip extends Model<TripAttributes, TripCreationAttributes> implements TripAttributes {
   public id!: number;
@@ -47,6 +50,7 @@ class Trip extends Model<TripAttributes, TripCreationAttributes> implements Trip
   public endLatitude?: number;
   public endLongitude?: number;
   public endAddress?: string;
+  public clientRef?: string | null;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -124,6 +128,12 @@ Trip.init(
     endAddress: {
       type: DataTypes.STRING(500),
       field: 'end_address',
+    },
+    clientRef: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      unique: true,
+      field: 'client_ref',
     },
   },
   {

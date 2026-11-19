@@ -1,0 +1,48 @@
+{
+  "summary": "Tested the Node test API (fleet-test-api, Postgres fleet_test) and the Expo driver app web preview. Backend: vitest 154/154 passed, typecheck passed, new pytest suite 13/13 passed. It covers driver login, multipart start with clientRef (a re-post returns 200 with the same id), the startedAt bounds (2h ago used; +2 days and -30 days ignored), photos in Emergent storage (/api/files/sts-fleet/trips/<uuid>.jpg returns 200 image/jpeg; unknown uuid returns 404), end_odometer upload idempotency (201, then 200 with the same id, 1 row), end below start returns 400, end with endedAt sets the right duration, and a repeated end returns 200 completed. Frontend: the online flow passed end to end (john): login, Home with Completed Trips, StartTrip with the assigned vehicle, 3 photos via the file chooser, ActiveTrip, EndTrip, Home notice 'Trip completed successfully!'. The offline flow passed (sarah) once the vehicle was cached: offline start went to ActiveTrip with active-trip-pending-notice, Home showed pending-trips-card '1 update waiting to send', and back online send-now delivered trip 12, visible via GET /trips/my-active. An offline end then synced and completed trip 12 with all 4 photos in Emergent storage. One offline bug: a driver who goes offline before ever opening StartTrip with signal cannot start a trip ('No Vehicle Assigned'). No deprecated Expo packages found (no expo-av, expo-barcode-scanner or expo-background-fetch).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/trips/:id/photos, GET /api/trips/:id", "issue": "IDOR, present since the initial commit: uploadTripPhoto uses Trip.findByPk(id) without checking driverId, and getTripById only requires authenticateToken. Verified that james can upload a photo to maria's trip 8 (201) and read her trip (200), including the photo URLs. /api/files is unauthenticated by design, so any driver can view other drivers' selfies and passenger photos, and can attach photos to any trip, including completed ones.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/trips/:id/photos", "issue": "An invalid photoType (e.g. 'bogus') returns 500 'Failed to upload photo' instead of 400. The image is uploaded to Emergent storage before TripPhoto.create fails on the ENUM, which leaves an orphaned object. Validate photoType before calling storePhoto."},
+      {"endpoint": "storePhoto (tripController.ts:179-195)", "issue": "If Emergent storage fails, the code silently falls back to a base64 data URI stored in the DB row and logs nothing, so a storage outage would not be noticed. Add console.error in the catch."},
+      {"endpoint": "PUT /api/trips/:id/end", "issue": "Not atomic: two concurrent end requests can both find the trip in_progress and both update it. Low risk because the values are the same; could use a conditional update (WHERE status='in_progress')."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "EndTripScreen navigation", "issue": "navigation.navigate('Home', ...) (EndTripScreen.tsx:71) pushes a second Home under @react-navigation v7 (navigate no longer pops back). After ending a trip, Home shows a back arrow and the DOM holds 2 home-start-trip-button elements. Use navigation.popTo('Home', params) or reset().", "testID": "home-start-trip-button", "priority": "MEDIUM"},
+      {"component": "HomeScreen home-notice", "issue": "After an offline end syncs successfully, the banner 'Trip saved on this phone. It will be sent automatically when you are back online.' stays on screen, which is misleading. Clear or update it when the queue empties.", "testID": "home-notice", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Offline start without a warmed vehicle cache", "issue": "getAssignedVehicle() is only called in StartTripScreen (line 32), so the vehicle cache is filled only if StartTrip was opened with signal. Repro: log in as sarah, go offline on Home, tap Start New Trip. The screen shows 'No Vehicle Assigned' and the driver cannot start a trip offline. Fix: prefetch getAssignedVehicle() on Home load or after login, and when offline with no cache show a 'no connection' message instead of 'No Vehicle Assigned'.", "affected_testIDs": ["home-start-trip-button", "start-assigned-vehicle"]}
+    ],
+    "design_issues": [
+      {"screen": "Home - Completed Trips table", "issues": ["The long vehicle model 'Chevrolet Silverado' runs into the Duration column (no numberOfLines/ellipsis or flex on the vehicle cell)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_trips_offline_storage.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "HIGH: Scope POST /api/trips/:id/photos and the driver view of GET /api/trips/:id to the trip's own driver (where: { id, driverId: req.driver.id }). Present since the initial commit, but it exposes selfies.",
+    "Offline: prefetch the assigned vehicle on Home or after login so a trip can be started offline even if StartTrip was never opened with signal. Show a 'no connection' message instead of 'No Vehicle Assigned' when offline with no cache.",
+    "EndTripScreen.tsx:71: replace navigation.navigate('Home', ...) with popTo('Home', ...) or reset to avoid duplicate Home screens (React Navigation 7).",
+    "Validate photoType in uploadTripPhoto before storing (return 400, not 500).",
+    "Log Emergent storage failures in the storePhoto catch before the data-URI fallback.",
+    "Clear the stale home-notice once pending items are delivered."
+  ],
+  "critical_code_review_comments": [
+    "Web only: keepPhoto returns the blob: URI as is, so a page reload while items are queued loses the photos. appendPhoto's fetch then throws without a response, which counts as transient, and the queue stays blocked with no error shown. The same endless-retry case happens on native if a queued photo file is missing. Consider marking an item rejected after N failures or when a photo cannot be read.",
+    "isTransient treats 401 as transient. If the refresh token has expired, queued items wait silently until the driver logs in again. Acceptable, but consider showing it in PendingTrips.",
+    "The queue is scoped by driverId and clearOfflineCache runs on logout: good.",
+    "retention.ts handles Emergent paths via emergentObjectPath/erasePhoto: good. The files route validates the path with a strict regex (a traversal attempt returned 404)."
+  ],
+  "updated_files": ["/app/backend/tests/test_trips_offline_storage.py (new)"],
+  "success_rate": {"backend": "100% (vitest 154/154, typecheck OK, pytest 13/13); 1 HIGH pre-existing IDOR, 3 minor", "frontend": "~85%: online flow and offline start/end sync pass; offline start fails without a warmed vehicle cache; navigation duplicates Home"},
+  "seed_data_creation": "No seed scripts run. Completed test trips were created: john (vehicle 1, 15520->15530), maria trip 8 (vehicle 2, 8000->8025; also holds 1 extra passenger photo from the IDOR probe), james x2 (vehicle 3, 25000->25000), sarah trip 12 (vehicle 4, 12000->12010). Vehicle current_odometer for vehicles 1, 2 and 4 increased accordingly. There is no delete API, so the trips were left in the test DB.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login response uses accessToken (not token). Vehicle odometers: v1=15530, v2=8025, v3=25000, v4=12010. On web, camera buttons open a file chooser (use page.expect_file_chooser + set_files). Do not use page.go_back() while offline (it navigates the browser and blanks the page); use the header back button [aria-label*='back' i]. After EndTrip there are 2 Home screens in the DOM, so use locator('visible=true'). Each browser_automation call is a fresh context (localStorage lost), so do the offline queue and sync in one script. To start offline, open StartTrip online first (vehicle cache).",
+  "rca_of_issue": "Offline 'No Vehicle Assigned': cachedRead(VEHICLE_KEY) in offlineTrips.ts only writes the cache when getAssignedVehicle() succeeds, and only StartTripScreen calls it. Offline with an empty cache, it returns the fallback null, and StartTrip renders the no-vehicle state. Duplicate Home: React Navigation 7 changed navigate() so it no longer goes back to an existing route; EndTripScreen still uses navigate('Home')."
+}

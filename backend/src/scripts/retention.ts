@@ -5,6 +5,7 @@ import { Op } from 'sequelize';
 import { connectDatabase } from '../config/database';
 import { Trip, TripPhoto, Driver } from '../models';
 import cloudinary from '../config/cloudinary';
+import { emergentObjectPath, erasePhoto } from '../config/photoStorage';
 import {
   retentionCutoff,
   anonymisedValues,
@@ -63,7 +64,7 @@ const run = async () => {
     }],
   });
 
-  const remoteAssets = photosDue.filter((p) => cloudinaryPublicId(p.photoUrl));
+  const remoteAssets = photosDue.filter((p) => cloudinaryPublicId(p.photoUrl) || emergentObjectPath(p.photoUrl));
 
   // Account records, the other half of the policy. deactivatedAt is set by the
   // Driver model's hook when a driver is made inactive; rows that went
@@ -90,7 +91,7 @@ const run = async () => {
   console.log(`Retention window: ${years} year${years === 1 ? '' : 's'}`);
   console.log(`Cutoff:           ${cutoff.toISOString()} (trips starting on or before)`);
   console.log(`Trips to anonymise:     ${tripIds.length}`);
-  console.log(`Photographs to delete:  ${photosDue.length} (${remoteAssets.length} stored on Cloudinary)`);
+  console.log(`Photographs to delete:  ${photosDue.length} (${remoteAssets.length} stored remotely)`);
   console.log(`Driver accounts to anonymise: ${driversDue.length}`);
 
   if (undatedInactive > 0) {
@@ -124,6 +125,19 @@ const run = async () => {
   const remoteFailures: string[] = [];
 
   for (const photo of photosDue) {
+    const objectPath = emergentObjectPath(photo.photoUrl);
+    if (objectPath) {
+      // Emergent storage has no delete call; overwriting with nothing
+      // destroys the image. The row goes only once that has succeeded.
+      try {
+        await erasePhoto(objectPath);
+        remoteDeleted += 1;
+        deletable.push(photo.id);
+      } catch (error) {
+        remoteFailures.push(`${objectPath}: ${error instanceof Error ? error.message : error}`);
+      }
+      continue;
+    }
     const publicId = cloudinaryPublicId(photo.photoUrl);
     if (!publicId) {
       // Nothing stored remotely - an inline data URI. The row is the only copy.
@@ -183,14 +197,14 @@ const run = async () => {
     }
   });
 
-  console.log(`\nDeleted ${remoteDeleted} Cloudinary asset(s).`);
+  console.log(`\nDeleted ${remoteDeleted} stored photo file(s).`);
   console.log(`Removed ${photosRemoved} photograph record(s).`);
   console.log(`Anonymised ${tripsAnonymised} trip(s).`);
   console.log(`Anonymised ${driversAnonymised} driver account(s).`);
 
   if (remoteFailures.length) {
     console.error(
-      `\n${remoteFailures.length} Cloudinary asset(s) could not be deleted. Their\n` +
+      `\n${remoteFailures.length} stored photo(s) could not be deleted. Their\n` +
       'records were kept so a later run retries them:'
     );
     for (const failure of remoteFailures.slice(0, 20)) console.error(`  ${failure}`);

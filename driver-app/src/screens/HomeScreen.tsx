@@ -1,8 +1,9 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, Platform } from 'react-native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import { tripsApi } from '../services/api';
+import PendingTrips from '../components/PendingTrips';
+import { getActiveTrip, getAssignedVehicle, getRecentTrips, loadQueue, subscribeToQueue } from '../services/offlineTrips';
 
 export default function HomeScreen() {
   const { driver, logout } = useAuth();
@@ -11,31 +12,19 @@ export default function HomeScreen() {
   const [recentTrips, setRecentTrips] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  var loadData = function () {
-    setLoading(true);
-    var active: any = null;
-    var trips: any[] = [];
+  const route = useRoute<any>();
+  const notice: string | undefined = route.params?.notice;
 
-    tripsApi.getActiveTrip()
-      .then(function (r: any) { active = r.data; })
-      .catch(function (_e: any) { /* no active trip */ })
-      .then(function () {
-        return tripsApi.getMyTrips()
-          .then(function (r: any) {
-            if (r && r.data && Array.isArray(r.data)) {
-              trips = r.data;
-            }
-          })
-          .catch(function (_e: any) { /* endpoint may not exist */ });
-      })
-      .then(function () {
-        setActiveTrip(active);
-        setRecentTrips(trips);
-        setLoading(false);
-      })
-      .catch(function (_e: any) {
-        setLoading(false);
-      });
+  // Falls back to what is saved on the phone when there is no signal, so a
+  // driver out of coverage still sees their trip in progress.
+  const loadData = async () => {
+    setLoading(true);
+    // The vehicle is fetched here too so Start Trip still knows it if the
+    // signal drops before the driver opens that screen.
+    const [active, trips] = await Promise.all([getActiveTrip(), getRecentTrips(), getAssignedVehicle()]);
+    setActiveTrip(active);
+    setRecentTrips(trips);
+    setLoading(false);
   };
 
   useFocusEffect(
@@ -44,8 +33,25 @@ export default function HomeScreen() {
     }, [])
   );
 
-  var handleLogout = function () {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
+  // A trip sent in the background moves from "waiting" to completed, and the
+  // "will be sent" notice goes once nothing is waiting.
+  useEffect(() => subscribeToQueue((queue) => {
+    if (queue.length === 0) navigation.setParams({ notice: undefined });
+    Promise.all([getActiveTrip(), getRecentTrips()]).then(([active, trips]) => {
+      setActiveTrip(active);
+      setRecentTrips(trips);
+    });
+  }), []);
+
+  var handleLogout = async function () {
+    const waiting = (await loadQueue()).length;
+    if (Platform.OS === 'web') {
+      logout();
+      return;
+    }
+    Alert.alert('Logout', waiting
+      ? 'Some trips have not been sent yet. They stay on this phone and are sent when you sign in again. Logout now?'
+      : 'Are you sure you want to logout?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Logout', onPress: logout, style: 'destructive' },
     ]);
@@ -98,13 +104,22 @@ export default function HomeScreen() {
           <Text style={styles.greeting}>{'Hello, ' + driverName}</Text>
           <Text style={styles.sub}>{'ID: ' + driverId}</Text>
         </View>
-        <TouchableOpacity onPress={handleLogout}>
+        <TouchableOpacity onPress={handleLogout} testID="home-logout-button">
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </View>
 
+      {notice ? (
+        <View style={styles.noticeBanner} testID="home-notice">
+          <Text style={styles.noticeText}>{notice}</Text>
+        </View>
+      ) : null}
+
+      <PendingTrips />
+
       {activeTrip ? (
         <TouchableOpacity
+          testID="home-active-trip-banner"
           style={styles.activeBanner}
           onPress={function () { navigation.navigate('ActiveTrip', { trip: activeTrip }); }}
         >
@@ -119,6 +134,7 @@ export default function HomeScreen() {
       ) : null}
 
       <TouchableOpacity
+        testID="home-start-trip-button"
         style={activeTrip ? styles.newTripBtnDisabled : styles.newTripBtn}
         onPress={function () {
           if (!activeTrip) {
@@ -161,7 +177,7 @@ export default function HomeScreen() {
           var key = t.id ? String(t.id) : String(i);
 
           return (
-            <View key={key} style={rowStyle}>
+            <View key={key} style={rowStyle} testID={'home-completed-trip-' + key}>
               <View style={styles.colDate}>
                 <Text style={styles.cellMain}>{fmtDate(t.endTime)}</Text>
                 <Text style={styles.cellSub}>{fmtTime(t.startTime) + ' - ' + fmtTime(t.endTime)}</Text>
@@ -194,6 +210,8 @@ var styles = StyleSheet.create({
   sub: { fontSize: 13, color: '#94a3b8', marginTop: 3, fontWeight: '500' },
   logoutText: { color: '#ef4444', fontSize: 14, fontWeight: '600' },
 
+  noticeBanner: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 14, padding: 14, marginBottom: 16 },
+  noticeText: { fontSize: 14, color: '#1e40af', fontWeight: '600' },
   activeBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ecfdf5', borderWidth: 1, borderColor: '#86efac', borderRadius: 16, padding: 16, marginBottom: 16 },
   activeDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#22c55e', marginRight: 14 },
   bannerBody: { flex: 1 },
@@ -215,7 +233,7 @@ var styles = StyleSheet.create({
   rowEven: { flexDirection: 'row', backgroundColor: '#fff', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
   rowOdd: { flexDirection: 'row', backgroundColor: '#f8fafc', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
   colDate: { flex: 1.2, paddingRight: 4 },
-  colVehicle: { flex: 1, paddingRight: 4 },
+  colVehicle: { flex: 1, paddingRight: 4, overflow: 'hidden' },
   colDur: { flex: 0.7, justifyContent: 'center' },
   colMiles: { flex: 0.6, alignItems: 'flex-end', justifyContent: 'center' },
   cellMain: { fontSize: 13, fontWeight: '600', color: '#1e293b' },

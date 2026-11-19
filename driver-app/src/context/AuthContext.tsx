@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authApi, setOnSessionEnded, invalidateSession } from '../services/api';
+import { startOfflineSync, clearOfflineCache } from '../services/offlineTrips';
 
 interface Driver {
   id: number;
@@ -35,6 +36,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOnSessionEnded(() => setDriver(null));
     return () => setOnSessionEnded(null);
   }, []);
+
+  // Trips saved offline are sent for the signed-in driver whenever the phone
+  // is back online or returns to the foreground.
+  useEffect(() => startOfflineSync(driver?.id ?? null), [driver?.id]);
 
   const checkAuth = async () => {
     try {
@@ -75,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // between them; only a synchronous marker closes this one.
     invalidateSession();
     await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
+    await clearOfflineCache();
     setDriver(null);
   };
 

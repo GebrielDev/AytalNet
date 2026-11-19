@@ -58,6 +58,24 @@ reveal which addresses are registered; it is logged instead, naming the
 provider. Outside production the reset link is also printed to the log, so the
 flow can be exercised with no mail provider at all.
 
+### Photo Storage (Cloudinary or Emergent)
+
+Trip photographs go to Cloudinary unless `PHOTO_STORAGE=emergent` is set, in
+which case they go to Emergent managed storage. That also needs
+`EMERGENT_LLM_KEY`, and optionally `PUBLIC_API_URL` (e.g.
+`https://api.startechsolutions.us/api`), which is used to build the photo links.
+These photos are served by the API at `GET /api/files/<path>`. Photos already in
+Cloudinary stay there and keep working. Emergent storage has no delete call, so
+the retention job erases a photograph by overwriting its file with zero bytes.
+
+### Offline Trips
+
+The driver app saves every trip start and end on the phone first and sends it
+when there is signal. A start carries a `clientRef` and the time the driver
+pressed Start (`startedAt`), and an end carries `endedAt`, so a re-sent request
+returns the trip that already exists. **Deploy this backend before shipping the
+app build**, because older servers ignore those fields.
+
 ### Seed Database
 
 ```bash

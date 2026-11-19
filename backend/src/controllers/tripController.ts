@@ -2,6 +2,28 @@ import { Request, Response } from 'express';
 import { Trip, TripPhoto, Driver, Vehicle } from '../models';
 import { Op } from 'sequelize';
 import cloudinary from '../config/cloudinary';
+import { usesEmergentStorage, storePhotoInEmergent, erasePhoto } from '../config/photoStorage';
+
+/**
+ * Trips recorded offline arrive later, carrying the time the driver actually
+ * pressed Start or Complete. Accepted only inside a sane window: not in the
+ * future (with a little clock skew allowed) and not older than a week, which
+ * is also how long the app's refresh token lasts. Anything else is ignored and
+ * the server's own clock is used, exactly as before.
+ */
+const OFFLINE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const CLOCK_SKEW_MS = 2 * 60 * 1000;
+const recordedAt = (value: unknown, now: Date): Date | null => {
+  if (typeof value !== 'string') return null;
+  const at = new Date(value);
+  const t = at.getTime();
+  if (!Number.isFinite(t)) return null;
+  if (t > now.getTime() + CLOCK_SKEW_MS || t < now.getTime() - OFFLINE_WINDOW_MS) return null;
+  return t > now.getTime() ? now : at;
+};
+
+const isClientRef = (value: unknown): value is string =>
+  typeof value === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(value);
 
 // Upload buffer to Cloudinary. Returns the secure URL and the asset's public
 // id, which is what lets a start that fails afterwards delete what it uploaded.
@@ -87,6 +109,11 @@ export const getTripById = async (req: Request, res: Response): Promise<void> =>
       res.status(404).json({ error: 'Trip not found' });
       return;
     }
+    // A driver may only open their own trips; dispatchers see all of them.
+    if (req.driver && trip.driverId !== req.driver.id) {
+      res.status(404).json({ error: 'Trip not found' });
+      return;
+    }
     res.json(trip);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch trip' });
@@ -152,13 +179,18 @@ type StartPhoto = (typeof START_PHOTO_FIELDS)[number];
  * falling back to a base64 data URI so a trip can still start when Cloudinary
  * is unreachable. Mirrors uploadTripPhoto, which does the same for end_odometer.
  */
-const storePhoto = async (
-  file: Express.Multer.File
-): Promise<{ photoUrl: string; publicId: string | null }> => {
+type StoredPhoto = { photoUrl: string; publicId: string | null; objectPath?: string | null };
+
+const storePhoto = async (file: Express.Multer.File, req: Request): Promise<StoredPhoto> => {
   try {
+    if (usesEmergentStorage()) {
+      const { photoUrl, objectPath } = await storePhotoInEmergent(file, req);
+      return { photoUrl, publicId: null, objectPath };
+    }
     const { secureUrl, publicId } = await uploadBufferToCloudinary(file.buffer, file.mimetype);
     return { photoUrl: secureUrl, publicId };
-  } catch (_cloudErr) {
+  } catch (storeErr) {
+    console.error('[trips] Photo storage failed, keeping the photo inline instead', storeErr);
     // The data URI lives in the photo row itself, so there is nothing remote
     // to clean up for one of these - hence the null id rather than a throw.
     return {
@@ -180,20 +212,30 @@ const storePhoto = async (
  * Best effort on purpose: the request is already failing for a reason worth
  * reporting, and a cleanup error must not replace it with a different one.
  */
-const discardStoredPhotos = async (stored: { publicId: string | null }[]): Promise<void> => {
+const discardStoredPhotos = async (stored: StoredPhoto[]): Promise<void> => {
   const publicIds = stored
     .map(({ publicId }) => publicId)
     .filter((publicId): publicId is string => Boolean(publicId));
+  const objectPaths = stored
+    .map(({ objectPath }) => objectPath)
+    .filter((objectPath): objectPath is string => Boolean(objectPath));
 
-  await Promise.all(
-    publicIds.map(async (publicId) => {
+  await Promise.all([
+    ...publicIds.map(async (publicId) => {
       try {
         await cloudinary.uploader.destroy(publicId);
       } catch (destroyErr) {
         console.error('[trips] Could not remove orphaned photo', publicId, destroyErr);
       }
-    })
-  );
+    }),
+    ...objectPaths.map(async (objectPath) => {
+      try {
+        await erasePhoto(objectPath);
+      } catch (eraseErr) {
+        console.error('[trips] Could not erase orphaned photo', objectPath, eraseErr);
+      }
+    }),
+  ]);
 };
 
 export const startTrip = async (req: Request, res: Response): Promise<void> => {
@@ -225,13 +267,35 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
 
     const payload = parsed as Record<string, unknown>;
 
-    const { vehicleId, startOdometer, startLatitude, startLongitude, startAddress } = payload as {
+    const { vehicleId, startOdometer, startLatitude, startLongitude, startAddress, clientRef, startedAt } = payload as {
       vehicleId?: number;
       startOdometer?: unknown;
       startLatitude?: unknown;
       startLongitude?: unknown;
       startAddress?: string;
+      clientRef?: unknown;
+      startedAt?: unknown;
     };
+
+    /**
+     * A start the app already delivered - the reply was lost, or a trip saved
+     * offline is being re-sent - returns the trip it created rather than a
+     * second one or "You already have an active trip".
+     */
+    const ref = isClientRef(clientRef) ? clientRef : null;
+    if (ref) {
+      const delivered = await Trip.findOne({
+        where: { clientRef: ref, driverId: driver.id },
+        include: [
+          { model: Driver, as: 'driver', attributes: ['id', 'name', 'employeeId', 'phone'] },
+          { model: Vehicle, as: 'vehicle', attributes: ['id', 'plateNumber', 'make', 'model'] },
+        ],
+      });
+      if (delivered) {
+        res.status(200).json(delivered);
+        return;
+      }
+    }
 
     // start_latitude and start_longitude became nullable so the retention job
     // can strip the location from trips past their seven-year window. That
@@ -303,21 +367,17 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
     // Stored before the transaction opens: these are network calls to
     // Cloudinary and holding a database transaction across them would pin a
     // connection for their duration. A failure here has written nothing.
-    const takenAt = new Date();
+    const takenAt = recordedAt(startedAt, new Date()) ?? new Date();
     const results = await Promise.allSettled(
       photos.map(async ({ photoType, file }) => ({
         photoType,
-        ...(await storePhoto(file)),
+        ...(await storePhoto(file, req)),
       }))
     );
 
     const storedPhotos = results
       .filter(
-        (r): r is PromiseFulfilledResult<{
-          photoType: StartPhoto;
-          photoUrl: string;
-          publicId: string | null;
-        }> => r.status === 'fulfilled'
+        (r): r is PromiseFulfilledResult<StoredPhoto & { photoType: StartPhoto }> => r.status === 'fulfilled'
       )
       .map((r) => r.value);
 
@@ -364,6 +424,7 @@ export const startTrip = async (req: Request, res: Response): Promise<void> => {
           startLatitude,
           startLongitude,
           startAddress,
+          clientRef: ref,
         },
         { transaction }
       );
@@ -459,10 +520,17 @@ export const endTrip = async (req: Request, res: Response): Promise<void> => {
     // `?? {}` mirrors startTrip. express.json() already defaults req.body to
     // an object, so this is not load-bearing today - it keeps the guard below
     // working if this route is ever mounted without that parser.
-    const { endOdometer, endLatitude, endLongitude, endAddress } = req.body ?? {};
+    const { endOdometer, endLatitude, endLongitude, endAddress, endedAt } = req.body ?? {};
 
     const trip = await Trip.findOne({ where: { id: req.params.id, driverId: driver.id, status: 'in_progress' } });
     if (!trip) {
+      // An end the app re-sends - its reply was lost, or it was saved offline
+      // and sent twice - finds the trip already completed. That is success.
+      const completed = await Trip.findOne({ where: { id: req.params.id, driverId: driver.id, status: 'completed' } });
+      if (completed) {
+        res.json(completed);
+        return;
+      }
       res.status(404).json({ error: 'Active trip not found' });
       return;
     }
@@ -479,7 +547,10 @@ export const endTrip = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const endTime = new Date();
+    // A recorded end time never lands before the start.
+    const recordedEnd = recordedAt(endedAt, new Date());
+    const endTime =
+      recordedEnd && recordedEnd.getTime() >= trip.startTime.getTime() ? recordedEnd : new Date();
     const durationMinutes = Math.round((endTime.getTime() - trip.startTime.getTime()) / 60000);
     const totalMileage = endOdometer - Number(trip.startOdometer);
 
@@ -505,21 +576,29 @@ export const uploadTripPhoto = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const trip = await Trip.findByPk(req.params.id);
+    const trip = await Trip.findOne({ where: { id: req.params.id, driverId: req.driver!.id } });
     if (!trip) {
       res.status(404).json({ error: 'Trip not found' });
       return;
     }
 
-    let photoUrl: string;
-    try {
-      // Try Cloudinary upload from memory buffer
-      photoUrl = (await uploadBufferToCloudinary(file.buffer, file.mimetype)).secureUrl;
-    } catch (_cloudErr) {
-      // Fallback: store as base64 data URI (works without any external service)
-      const base64 = file.buffer.toString('base64');
-      photoUrl = `data:${file.mimetype};base64,${base64}`;
+    const PHOTO_TYPES = ['driver_selfie', 'start_odometer', 'end_odometer', 'passenger', 'license_plate'];
+    if (!PHOTO_TYPES.includes(photoType)) {
+      res.status(400).json({ error: 'Unknown photo type' });
+      return;
     }
+
+    // The end odometer photo is sent again when an offline end is retried;
+    // keep the first rather than piling up copies.
+    if (photoType === 'end_odometer') {
+      const existing = await TripPhoto.findOne({ where: { tripId: trip.id, photoType } });
+      if (existing) {
+        res.status(200).json(existing);
+        return;
+      }
+    }
+
+    const { photoUrl } = await storePhoto(file, req);
 
     const photo = await TripPhoto.create({
       tripId: trip.id,

@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView,
 import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { tripsApi } from '../services/api';
+import { keepPhoto, submitEnd } from '../services/offlineTrips';
 
 export default function EndTripScreen() {
   const navigation = useNavigation<any>();
@@ -38,7 +38,7 @@ export default function EndTripScreen() {
       Alert.alert('Error', 'Enter the odometer reading as a number, for example 10432');
       return;
     }
-    if (endOdometerValue < trip.startOdometer) {
+    if (endOdometerValue < Number(trip.startOdometer)) {
       Alert.alert('Error', 'End odometer cannot be less than start odometer');
       return;
     }
@@ -47,30 +47,41 @@ export default function EndTripScreen() {
     try {
       const location = await Location.getCurrentPositionAsync({});
 
-      // Upload end odometer photo
-      const formData = new FormData();
-      formData.append('photo', { uri: odometerPhoto, type: 'image/jpeg', name: 'end_odometer.jpg' } as any);
-      formData.append('photoType', 'end_odometer');
-      await tripsApi.uploadPhoto(trip.id, formData);
-
-      // End the trip
-      await tripsApi.end(trip.id, {
+      // Saved on the phone first and sent right away when there is signal;
+      // otherwise sent automatically once the phone is back online. The end
+      // odometer photo goes first, then the trip is completed.
+      const outcome = await submitEnd({
+        tripId: trip.id,
+        tripClientRef: trip.id ? undefined : trip.clientRef,
+        vehicle: trip.vehicle,
+        startedAt: trip.startTime,
+        startOdometer: Number(trip.startOdometer),
+        endedAt: new Date().toISOString(),
         endOdometer: endOdometerValue,
         endLatitude: location.coords.latitude,
         endLongitude: location.coords.longitude,
+        photoUri: keepPhoto(odometerPhoto, 'end_odometer'),
       });
 
-      Alert.alert('Success', 'Trip completed successfully!', [
-        { text: 'OK', onPress: () => navigation.navigate('Home') },
-      ]);
+      if (outcome.status === 'rejected') {
+        Alert.alert('Error', outcome.error);
+        return;
+      }
+
+      navigation.popTo('Home', {
+        notice:
+          outcome.status === 'sent'
+            ? 'Trip completed successfully!'
+            : 'Trip saved on this phone. It will be sent automatically when you are back online.',
+      });
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.error || 'Failed to end trip');
+      Alert.alert('Error', 'Could not end the trip. Check that location is turned on and try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const mileage = odometer ? parseFloat(odometer) - trip.startOdometer : 0;
+  const mileage = odometer ? parseFloat(odometer) - Number(trip.startOdometer) : 0;
 
   return (
     <ScrollView style={styles.container}>
@@ -95,6 +106,7 @@ export default function EndTripScreen() {
       <Text style={styles.sectionTitle}>End Odometer Reading *</Text>
       <TextInput
         style={styles.input}
+        testID="end-odometer-input"
         placeholder="Enter current odometer"
         value={odometer}
         onChangeText={setOdometer}
@@ -109,7 +121,7 @@ export default function EndTripScreen() {
       )}
 
       <Text style={styles.sectionTitle}>Odometer Photo *</Text>
-      <TouchableOpacity style={styles.photoButton} onPress={takePhoto}>
+      <TouchableOpacity style={styles.photoButton} onPress={takePhoto} testID="end-odometer-photo">
         {odometerPhoto ? (
           <Image source={{ uri: odometerPhoto }} style={styles.photoPreview} />
         ) : (
@@ -117,7 +129,7 @@ export default function EndTripScreen() {
         )}
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.endButton} onPress={endTrip} disabled={loading}>
+      <TouchableOpacity style={styles.endButton} onPress={endTrip} disabled={loading} testID="end-trip-submit">
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
