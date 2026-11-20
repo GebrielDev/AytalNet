@@ -16,13 +16,16 @@ interface DriverStopAttributes {
   longitude?: number | null;
   arrivedAt?: Date | null;
   arrivedDistanceMeters?: number | null;
+  // Where the phone was when the stop was reached (driver tap or trip end).
+  arrivedLatitude?: number | null;
+  arrivedLongitude?: number | null;
   tripId?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 interface DriverStopCreationAttributes
-  extends Optional<DriverStopAttributes, 'id' | 'note' | 'latitude' | 'longitude' | 'arrivedAt' | 'arrivedDistanceMeters' | 'tripId' | 'createdAt' | 'updatedAt'> {}
+  extends Optional<DriverStopAttributes, 'id' | 'note' | 'latitude' | 'longitude' | 'arrivedAt' | 'arrivedDistanceMeters' | 'arrivedLatitude' | 'arrivedLongitude' | 'tripId' | 'createdAt' | 'updatedAt'> {}
 
 class DriverStop extends Model<DriverStopAttributes, DriverStopCreationAttributes> implements DriverStopAttributes {
   public id!: number;
@@ -34,6 +37,8 @@ class DriverStop extends Model<DriverStopAttributes, DriverStopCreationAttribute
   public longitude?: number | null;
   public arrivedAt?: Date | null;
   public arrivedDistanceMeters?: number | null;
+  public arrivedLatitude?: number | null;
+  public arrivedLongitude?: number | null;
   public tripId?: number | null;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -56,6 +61,8 @@ DriverStop.init(
     longitude: { type: DataTypes.DECIMAL(10, 7), allowNull: true },
     arrivedAt: { type: DataTypes.DATE, allowNull: true, field: 'arrived_at' },
     arrivedDistanceMeters: { type: DataTypes.INTEGER, allowNull: true, field: 'arrived_distance_meters' },
+    arrivedLatitude: { type: DataTypes.DECIMAL(10, 7), allowNull: true, field: 'arrived_latitude' },
+    arrivedLongitude: { type: DataTypes.DECIMAL(10, 7), allowNull: true, field: 'arrived_longitude' },
     tripId: { type: DataTypes.INTEGER, allowNull: true, field: 'trip_id' },
   },
   { sequelize, tableName: 'driver_stops', underscored: true }

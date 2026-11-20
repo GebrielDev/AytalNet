@@ -42,6 +42,8 @@ a Node/Express/PostgreSQL backend on Railway, a React web dashboard, and an Expo
 
 - 2026-06: Stops board. A dashboard /stops page (`GET /api/drivers/stops-board`) shows every active driver's stops, progress and trip status. It updates live from socket `stops:changed`, `driver:arrived` and the trip events.
 
+- 2026-06: Board map view. The Stops board has a Leaflet map showing each driver's last known location (from the latest trip start/end or stop arrival; there is no continuous tracking) and their next stop, joined by a dashed line. Clicking a card focuses that driver. `driver_stops` gained arrived_latitude/longitude.
+
 ## Known limits
 - The preview test copy (Postgres plus the supervisor program) is lost when the container restarts and has to be set up again.
 - The live server needs this backend deployed to Railway, with `PHOTO_STORAGE=emergent`, `EMERGENT_LLM_KEY` and `PUBLIC_API_URL`, before the new app build ships.

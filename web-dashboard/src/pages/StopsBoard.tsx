@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { driversApi } from '../services/api';
 import StopsModal from '../components/StopsModal';
+import BoardMap, { type MapRow } from '../components/BoardMap';
 
 interface BoardStop {
   id: number;
@@ -9,6 +10,7 @@ interface BoardStop {
   address: string;
   note: string | null;
   latitude: number | null;
+  longitude: number | null;
   arrivedAt: string | null;
   arrivedDistanceMeters: number | null;
 }
@@ -20,6 +22,7 @@ interface BoardRow {
   plate: string | null;
   activeTrip: { id: number; startTime: string } | null;
   stops: BoardStop[];
+  lastLocation: MapRow['lastLocation'];
   done: number;
   total: number;
 }
@@ -45,6 +48,8 @@ export default function StopsBoard() {
   const [showIdle, setShowIdle] = useState(false);
   const [editing, setEditing] = useState<{ id: number; name: string } | null>(null);
   const [flash, setFlash] = useState<number | null>(null);
+  const [focus, setFocus] = useState<number | null>(null);
+  const [showMap, setShowMap] = useState(true);
   const timer = useRef<ReturnType<typeof setTimeout>>();
 
   const load = useCallback(async () => {
@@ -128,7 +133,11 @@ export default function StopsBoard() {
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer py-2">
+            <input type="checkbox" data-testid="stops-board-show-map" checked={showMap} onChange={(e) => setShowMap(e.target.checked)} className="w-4 h-4 rounded border-gray-300" />
+            Map
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer py-2">
             <input type="checkbox" data-testid="stops-board-show-idle" checked={showIdle} onChange={(e) => setShowIdle(e.target.checked)} className="w-4 h-4 rounded border-gray-300" />
             Show drivers without stops ({idle.length})
           </label>
@@ -147,7 +156,13 @@ export default function StopsBoard() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className={showMap ? 'grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] items-start' : ''}>
+      {showMap && (
+        <div className="xl:order-2 xl:sticky xl:top-4">
+          <BoardMap rows={shown} focusDriverId={focus} onSelect={setFocus} />
+        </div>
+      )}
+      <div className={`grid gap-4 md:grid-cols-2 ${showMap ? '' : 'xl:grid-cols-3'}`}>
         {shown.map((r) => {
           const nextId = r.stops.find((s) => !s.arrivedAt)?.id;
           const pct = r.total ? Math.round((r.done / r.total) * 100) : 0;
@@ -155,7 +170,8 @@ export default function StopsBoard() {
             <div
               key={r.driverId}
               data-testid={`stops-board-driver-${r.driverId}`}
-              className={`min-w-0 bg-white rounded-xl border p-4 transition-shadow ${flash === r.driverId ? 'border-green-400 shadow-lg shadow-green-100' : 'border-gray-200'}`}
+              onClick={() => setFocus(r.driverId)}
+              className={`min-w-0 bg-white rounded-xl border p-4 transition-shadow cursor-pointer ${flash === r.driverId ? 'border-green-400 shadow-lg shadow-green-100' : focus === r.driverId ? 'border-blue-400 ring-1 ring-blue-200' : 'border-gray-200'}`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -164,6 +180,9 @@ export default function StopsBoard() {
                     {r.employeeId}
                     {r.plate ? ` · ${r.plate}` : ''}
                   </p>
+                  <p className="text-xs text-gray-400" data-testid={`stops-board-last-seen-${r.driverId}`}>
+                    {r.lastLocation ? `Last seen ${time(r.lastLocation.at)}` : 'No location yet'}
+                  </p>
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
                   {r.activeTrip ? (
@@ -171,7 +190,7 @@ export default function StopsBoard() {
                   ) : (
                     <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">No trip</span>
                   )}
-                  <button data-testid={`stops-board-edit-${r.driverId}`} onClick={() => setEditing({ id: r.driverId, name: r.name })} className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-2 -mr-2">
+                  <button data-testid={`stops-board-edit-${r.driverId}`} onClick={(e) => { e.stopPropagation(); setEditing({ id: r.driverId, name: r.name }); }} className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-2 -mr-2">
                     {r.total ? 'Edit stops' : 'Add stops'}
                   </button>
                 </div>
@@ -215,6 +234,8 @@ export default function StopsBoard() {
             </div>
           );
         })}
+      </div>
+
       </div>
 
       {editing && <StopsModal driver={editing} onClose={() => setEditing(null)} onSaved={load} />}

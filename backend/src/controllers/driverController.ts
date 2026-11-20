@@ -333,7 +333,7 @@ export const arriveAtStop = async (req: Request, res: Response): Promise<void> =
       }
     }
     const active = await Trip.findOne({ where: { driverId: stop.driverId, status: 'in_progress' }, attributes: ['id'] });
-    const stops = await markStopArrived(req.app.get('io'), stop, distance, active?.id ?? null, 'driver');
+    const stops = await markStopArrived(req.app.get('io'), stop, distance, active?.id ?? null, 'driver', { latitude: lat, longitude: lng });
     res.json({ stops });
   } catch (error) {
     console.error('[stops] Could not record arrival', error);
@@ -357,6 +357,41 @@ export const getMyDestination = async (req: Request, res: Response): Promise<voi
 };
 
 /**
+ * Each driver's most recent known position. The app does not track drivers
+ * continuously; positions are captured when a trip starts or ends and when a
+ * stop is reached, so this is the latest of those, labelled with its source.
+ */
+const lastKnownLocations = async () => {
+  const [trips] = (await sequelize.query(`
+    SELECT DISTINCT ON (driver_id) driver_id, status, start_time, start_latitude, start_longitude, end_time, end_latitude, end_longitude
+    FROM trips WHERE driver_id IS NOT NULL AND status IN ('in_progress', 'completed')
+    ORDER BY driver_id, COALESCE(end_time, start_time) DESC`)) as [any[], unknown];
+  const [arrivals] = (await sequelize.query(`
+    SELECT DISTINCT ON (driver_id) driver_id, arrived_at, arrived_latitude, arrived_longitude
+    FROM driver_stops WHERE arrived_at IS NOT NULL AND arrived_latitude IS NOT NULL
+    ORDER BY driver_id, arrived_at DESC`)) as [any[], unknown];
+
+  type Seen = { latitude: number; longitude: number; at: string; source: 'trip_start' | 'trip_end' | 'stop_arrival' };
+  const seen = new Map<number, Seen>();
+  const offer = (driverId: number, p: Seen) => {
+    if (!Number.isFinite(p.latitude) || !Number.isFinite(p.longitude)) return;
+    const cur = seen.get(driverId);
+    if (!cur || new Date(p.at) > new Date(cur.at)) seen.set(driverId, p);
+  };
+  for (const t of trips) {
+    if (t.status === 'completed' && t.end_latitude != null) {
+      offer(t.driver_id, { latitude: Number(t.end_latitude), longitude: Number(t.end_longitude), at: t.end_time, source: 'trip_end' });
+    } else if (t.start_latitude != null) {
+      offer(t.driver_id, { latitude: Number(t.start_latitude), longitude: Number(t.start_longitude), at: t.start_time, source: 'trip_start' });
+    }
+  }
+  for (const a of arrivals) {
+    offer(a.driver_id, { latitude: Number(a.arrived_latitude), longitude: Number(a.arrived_longitude), at: a.arrived_at, source: 'stop_arrival' });
+  }
+  return seen;
+};
+
+/**
  * Every active driver's stops and progress, for the dashboard's stops board.
  * Drivers with no stops are included (so the dispatcher can give them some)
  * after those with work in hand.
@@ -373,6 +408,7 @@ export const getStopsBoard = async (_req: Request, res: Response): Promise<void>
       DriverStop.findAll({ order: [['position', 'ASC'], ['id', 'ASC']] }),
       Trip.findAll({ where: { status: 'in_progress' }, attributes: ['id', 'driverId', 'startTime'] }),
     ]);
+    const lastSeen = await lastKnownLocations();
     const byDriver = new Map<number, ReturnType<typeof stopView>[]>();
     for (const stop of stops) {
       const list = byDriver.get(stop.driverId) ?? [];
@@ -389,6 +425,7 @@ export const getStopsBoard = async (_req: Request, res: Response): Promise<void>
         plate: d.assignedVehicle?.plateNumber ?? null,
         activeTrip: trip ? { id: trip.id, startTime: trip.startTime } : null,
         stops: list,
+        lastLocation: lastSeen.get(d.id) ?? null,
         done: list.filter((s) => s.arrivedAt).length,
         total: list.length,
       };

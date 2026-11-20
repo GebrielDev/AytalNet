@@ -54,9 +54,10 @@ export const markStopArrived = async (
   stop: DriverStop,
   distance: number | null,
   tripId: number | null,
-  how: 'driver' | 'trip_end'
+  how: 'driver' | 'trip_end',
+  at: { latitude: number; longitude: number } | null = null
 ) => {
-  await stop.update({ arrivedAt: new Date(), arrivedDistanceMeters: distance, tripId });
+  await stop.update({ arrivedAt: new Date(), arrivedDistanceMeters: distance, tripId, arrivedLatitude: at?.latitude ?? null, arrivedLongitude: at?.longitude ?? null });
   const driver = await Driver.findByPk(stop.driverId, { attributes: ['id', 'name'] });
   io?.to('dashboard').emit('driver:arrived', {
     driverId: stop.driverId,
@@ -82,7 +83,7 @@ export const arriveByTripEnd = async (io: Server | undefined, driverId: number, 
     if (stop.latitude == null || stop.longitude == null) continue;
     const d = distanceMeters(lat, lng, Number(stop.latitude), Number(stop.longitude));
     if (d <= arrivalRadiusMeters()) {
-      await markStopArrived(io, stop, d, tripId, 'trip_end');
+      await markStopArrived(io, stop, d, tripId, 'trip_end', { latitude: lat, longitude: lng });
       return d;
     }
   }
