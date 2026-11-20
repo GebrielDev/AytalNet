@@ -39,7 +39,7 @@ export default function LoginScreen() {
           style={styles.input}
           testID="login-email-input"
           placeholder="Email"
-          placeholderTextColor="rgba(255,255,255,0.35)"
+          placeholderTextColor="rgba(255,255,255,0.6)"
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -49,7 +49,7 @@ export default function LoginScreen() {
           style={styles.input}
           testID="login-password-input"
           placeholder="Password"
-          placeholderTextColor="rgba(255,255,255,0.35)"
+          placeholderTextColor="rgba(255,255,255,0.6)"
           value={password}
           onChangeText={setPassword}
           secureTextEntry

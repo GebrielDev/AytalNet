@@ -43,6 +43,12 @@ filter, and it loads private photos while you are signed in. Deploy it at the
 same time as step 3: once storage is switched on, new photos only load in the
 updated dashboard.
 
+In the `web-dashboard` service variables, set `VITE_API_URL` to your live API
+(for example `https://api.startechsolutions.us/api`) before it builds. Railway
+serves the dashboard at the root of its own address, so the normal
+`vite build` is right there (the `--base=/api/dashboard/` flag is only for the
+preview test copy).
+
 ## 6. Move the old photos (backend service → Shell, or a one-off command)
 ```bash
 npm run photos:migrate                          # report only

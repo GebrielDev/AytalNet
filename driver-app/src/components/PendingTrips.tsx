@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { useColors, useStyles, type Palette } from '../theme';
 import { discardItem, loadQueue, subscribeToQueue, syncNow, type QueuedItem } from '../services/offlineTrips';
 
 const fmt = (iso: string) => {
@@ -18,6 +19,8 @@ const describe = (item: QueuedItem) =>
  * sent out of order) until the driver discards it.
  */
 export default function PendingTrips() {
+  const styles = useStyles(makeStyles);
+  const c = useColors();
   const [queue, setQueue] = useState<QueuedItem[]>([]);
   const [sending, setSending] = useState(false);
 
@@ -63,22 +66,22 @@ export default function PendingTrips() {
       ))}
 
       <TouchableOpacity style={styles.sendBtn} onPress={sendNow} disabled={sending} testID="pending-trips-send-now">
-        {sending ? <ActivityIndicator color="#92400e" /> : <Text style={styles.sendText}>Send now</Text>}
+        {sending ? <ActivityIndicator color={c.warnText} /> : <Text style={styles.sendText}>Send now</Text>}
       </TouchableOpacity>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  card: { backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fcd34d', borderRadius: 16, padding: 16, marginBottom: 16 },
-  title: { fontSize: 16, fontWeight: '700', color: '#92400e' },
-  sub: { fontSize: 13, color: '#b45309', marginTop: 4, marginBottom: 8 },
-  row: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#fde68a' },
-  rowText: { fontSize: 14, color: '#78350f', fontWeight: '500' },
+const makeStyles = (c: Palette) => StyleSheet.create({
+  card: { backgroundColor: c.warnSoft, borderWidth: 1, borderColor: c.warnBorder, borderRadius: 16, padding: 16, marginBottom: 16 },
+  title: { fontSize: 16, fontWeight: '700', color: c.warnText },
+  sub: { fontSize: 13, color: c.warnText, marginTop: 4, marginBottom: 8 },
+  row: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: c.warnBorder },
+  rowText: { fontSize: 14, color: c.warnText, fontWeight: '500' },
   errorBox: { marginTop: 6 },
-  errorText: { fontSize: 13, color: '#b91c1c' },
-  discardBtn: { alignSelf: 'flex-start', marginTop: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, backgroundColor: '#fee2e2', minHeight: 44, justifyContent: 'center' },
-  discardText: { color: '#b91c1c', fontWeight: '700', fontSize: 14 },
+  errorText: { fontSize: 13, color: c.dangerText },
+  discardBtn: { alignSelf: 'flex-start', marginTop: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, backgroundColor: c.dangerSoft, minHeight: 44, justifyContent: 'center' },
+  discardText: { color: c.dangerText, fontWeight: '700', fontSize: 14 },
   sendBtn: { marginTop: 10, minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#f59e0b', alignItems: 'center', justifyContent: 'center' },
-  sendText: { color: '#92400e', fontWeight: '700', fontSize: 15 },
+  sendText: { color: c.warnText, fontWeight: '700', fontSize: 15 },
 });

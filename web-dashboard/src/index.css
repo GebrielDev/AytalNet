@@ -82,7 +82,7 @@ body {
 .dark [class*="text-violet-"], .dark [class*="text-purple-"], .dark [class*="text-indigo-"] { color: rgb(196 181 253); }
 .dark [class*="text-sky-"], .dark [class*="text-cyan-"] { color: rgb(125 211 252); }
 .dark [class*="text-orange-"], .dark [class*="text-rose-"], .dark [class*="text-pink-"] { color: rgb(253 186 116); }
-.dark .text-gray-400 { color: rgb(var(--gray-500)); }
+.text-gray-400 { color: rgb(var(--gray-500)); }
 .dark input, .dark select, .dark textarea { color: rgb(var(--gray-900)); }
 .dark input::placeholder { color: rgb(var(--gray-400)); }
 

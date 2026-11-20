@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, Platform, ActivityIndicator } from 'react-native';
 import * as Location from 'expo-location';
+import { useColors, useStyles, type Palette } from '../theme';
 import { vehiclesApi } from '../services/api';
 import { setStopsLocal, type Stop } from '../services/offlineTrips';
 
@@ -15,6 +16,7 @@ const APPS = [
 
 /** Navigate button for one stop: opens the driver's choice of maps app. */
 function NavigateButton({ stop, primary }: { stop: Stop; primary: boolean }) {
+  const styles = useStyles(makeStyles);
   const [choosing, setChoosing] = useState(false);
   const [error, setError] = useState('');
 
@@ -52,6 +54,8 @@ function NavigateButton({ stop, primary }: { stop: Stop; primary: boolean }) {
 
 /** "I've arrived": checked against the phone's location by the server. */
 function ArriveButton({ stop }: { stop: Stop }) {
+  const styles = useStyles(makeStyles);
+  const c = useColors();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -80,7 +84,7 @@ function ArriveButton({ stop }: { stop: Stop }) {
   return (
     <View>
       <TouchableOpacity style={styles.arrive} onPress={arrive} disabled={busy} testID={`arrive-button-${stop.id}`}>
-        {busy ? <ActivityIndicator color="#166534" /> : <Text style={styles.arriveText}>I've arrived</Text>}
+        {busy ? <ActivityIndicator color={c.successText} /> : <Text style={styles.arriveText}>I've arrived</Text>}
       </TouchableOpacity>
       {message ? <Text style={styles.error} testID={`arrive-message-${stop.id}`}>{message}</Text> : null}
     </View>
@@ -93,6 +97,7 @@ function ArriveButton({ stop }: { stop: Stop }) {
  * Navigate button; reached stops are ticked off.
  */
 export default function StopsCard({ stops }: { stops: Stop[] }) {
+  const styles = useStyles(makeStyles);
   if (!stops.length) return null;
   const nextId = stops.find((s) => !s.arrivedAt)?.id;
   const remaining = stops.filter((s) => !s.arrivedAt).length;
@@ -131,34 +136,34 @@ export default function StopsCard({ stops }: { stops: Stop[] }) {
   );
 }
 
-const styles = StyleSheet.create({
-  card: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 16, padding: 16, marginBottom: 16 },
-  label: { fontSize: 12, color: '#3b82f6', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+const makeStyles = (c: Palette) => StyleSheet.create({
+  card: { backgroundColor: c.card, borderWidth: 1, borderColor: c.primaryBorder, borderRadius: 16, padding: 16, marginBottom: 16 },
+  label: { fontSize: 12, color: c.primaryText, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
   stop: { paddingVertical: 10 },
-  stopDivider: { borderTopWidth: 1, borderTopColor: '#e2e8f0' },
+  stopDivider: { borderTopWidth: 1, borderTopColor: c.border },
   stopHeader: { flexDirection: 'row', gap: 10 },
-  badge: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-  badgeNext: { backgroundColor: '#2563eb' },
-  badgeDone: { backgroundColor: '#16a34a' },
-  badgeText: { fontSize: 12, fontWeight: '700', color: '#475569' },
+  badge: { width: 26, height: 26, borderRadius: 13, backgroundColor: c.border, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  badgeNext: { backgroundColor: c.primary },
+  badgeDone: { backgroundColor: c.success },
+  badgeText: { fontSize: 12, fontWeight: '700', color: c.textSoft },
   badgeTextOn: { color: '#fff' },
   stopBody: { flex: 1 },
-  address: { fontSize: 15, fontWeight: '600', color: '#334155' },
-  addressNext: { fontSize: 17, fontWeight: '700', color: '#0f172a' },
-  addressDone: { color: '#94a3b8', textDecorationLine: 'line-through' },
-  note: { fontSize: 13, color: '#64748b', marginTop: 2 },
+  address: { fontSize: 15, fontWeight: '600', color: c.textSoft },
+  addressNext: { fontSize: 17, fontWeight: '700', color: c.text },
+  addressDone: { color: c.textMuted, textDecorationLine: 'line-through' },
+  note: { fontSize: 13, color: c.textMuted, marginTop: 2 },
   doneText: { fontSize: 12, color: '#16a34a', fontWeight: '600', marginTop: 2 },
   actions: { marginTop: 10, marginLeft: 36, gap: 8 },
-  navigate: { backgroundColor: '#0f172a', minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  navigateText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  navigateSmall: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center' },
-  navigateSmallText: { color: '#0f172a', fontSize: 15, fontWeight: '600' },
-  arrive: { minHeight: 48, borderRadius: 12, backgroundColor: '#dcfce7', alignItems: 'center', justifyContent: 'center' },
-  arriveText: { color: '#166534', fontSize: 16, fontWeight: '700' },
+  navigate: { backgroundColor: c.inverse, minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  navigateText: { color: c.onInverse, fontSize: 16, fontWeight: '700' },
+  navigateSmall: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: c.borderStrong, alignItems: 'center', justifyContent: 'center' },
+  navigateSmallText: { color: c.text, fontSize: 15, fontWeight: '600' },
+  arrive: { minHeight: 48, borderRadius: 12, backgroundColor: c.successSoft, alignItems: 'center', justifyContent: 'center' },
+  arriveText: { color: c.successText, fontSize: 16, fontWeight: '700' },
   options: { gap: 8 },
-  option: { minHeight: 48, borderRadius: 12, borderWidth: 1, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center' },
-  optionText: { fontSize: 15, fontWeight: '600', color: '#0f172a' },
+  option: { minHeight: 48, borderRadius: 12, borderWidth: 1, borderColor: c.borderStrong, alignItems: 'center', justifyContent: 'center' },
+  optionText: { fontSize: 15, fontWeight: '600', color: c.text },
   cancel: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  cancelText: { fontSize: 14, color: '#64748b', fontWeight: '600' },
-  error: { marginTop: 6, fontSize: 13, color: '#b91c1c' },
+  cancelText: { fontSize: 14, color: c.textMuted, fontWeight: '600' },
+  error: { marginTop: 6, fontSize: 13, color: c.dangerText },
 });

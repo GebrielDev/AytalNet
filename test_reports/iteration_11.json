@@ -1,0 +1,35 @@
+{
+  "summary": "Round 11, frontend only. Retested the contrast fixes from iteration 10 in the driver app at 390x844, in both colour schemes using Playwright emulate_media. Contrast was measured from the computed colours, with alpha layers composited. Results: white text on #2563eb is 5.17 in both modes. This covers '+ Start New Trip', Start Trip 'Next' (both modes) and the duration value. StopsCard badgeNext also uses c.primary #2563eb, checked in code only because James has no stops. End Trip is white on #dc2626 at 4.83 and Complete Trip is white on #047857 at 5.48, both modes. Home Logout uses dangerText: #b91c1c at 6.18 in light and #fca5a5 at 9.86 in dark. Its tap target is 67x44 and the tap logs out to the Login screen. The disabled 'End Current Trip First' button (michael@fleet.com) is #334155 text on #cbd5e1 at 6.97 in light and #d5dde8 on #334155 at 7.56 in dark. The Login placeholder is rgba(255,255,255,0.6), 5.22 on the input. Regression as james@fleet.com: login works, Home renders in both schemes, and Start Trip step 1 'Next' moves to 'Step 2 of 5 / Photo of the license plate'. Michael's in-progress trip was not ended: End Trip was opened, but Complete Trip was never pressed. One item still fails: the Active Trip 'Duration' label, rgba(255,255,255,0.85) on #2563eb, is 4.19. That is better than 2.04/2.87, but still under 4.5 for 14px/600 text. Minor: the Home header sometimes stays blue (#2563eb) in dark mode. Deprecated packages detected: none.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Navigation header theming (App.tsx Stack screenOptions)", "issue": "Minor and intermittent. After logging in, the Home header was sometimes the light-mode blue (#2563eb) while the rest of Home was dark (body #0b1220, dark Logout colour). This happened in 2 of 5 fresh login runs: dark mode was set right after the page loaded and before the app had settled. It reproduced every time when the scheme was switched dark to light on the Login screen before logging in (case D). In that case the header stayed blue, which is correct for light, so it may be stale-header behaviour rather than a wrong colour. Toggling the scheme again or reloading corrects the header to #131c2e. White on blue is still readable (5.17), so this is cosmetic. Likely cause: the native-stack web header keeps the first headerStyle for a newly mounted screen. Possible fix: pass headerStyle through per-screen options, or key the Stack.Navigator on c.isDark.", "testID": "n/a (header)", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Active Trip duration card (both modes)", "issues": ["The durationLabel rgba(255,255,255,0.85) on #2563eb composites to rgb(222,232,252) and gives 4.19 contrast. The text is 14px semibold uppercase. 4.19 is below the 4.5 needed for normal-size text, though it is readable and much better than the old 2.04/2.87. Use rgba(255,255,255,0.9), about 4.6, or plain #fff (5.17). Reference: /app/driver-app/src/screens/ActiveTripScreen.tsx:116"]},
+      {"screen": "Forgot / Reset password (always dark)", "issues": ["Minor. The placeholders are still rgba(255,255,255,0.35), about 2.8 contrast; only LoginScreen was changed to 0.6. Reference: ForgotPasswordScreen.tsx:55, ResetPasswordScreen.tsx:69,77"]},
+      {"screen": "StopsCard (both modes)", "issues": ["Minor. The arrived-stop badge is white ✓ on hardcoded #16a34a, about 3.3 contrast. Consider c.success #047857 (5.48). Reference: /app/driver-app/src/components/StopsCard.tsx:147"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "ActiveTripScreen.tsx:116: raise the durationLabel alpha to 0.9 or use #fff. It is 4.19 now and needs 4.5 or more.",
+    "Optional, low: the Home header sometimes keeps a stale headerStyle colour after login when the OS scheme changed while the app was mounting or on the Login screen. Consider key={c.isDark ? 'dark' : 'light'} on Stack.Navigator, or set headerStyle in per-screen options.",
+    "Optional: set the ForgotPassword and ResetPassword placeholders to rgba(255,255,255,0.6) to match Login.",
+    "Optional: use c.success (#047857) instead of #16a34a for the StopsCard badgeDone."
+  ],
+  "critical_code_review_comments": [
+    "theme.ts: dark.primary is now #2563eb, and light/dark primaryDisabled are #cbd5e1/#334155. danger #dc2626 and success #047857 are now palette tokens, used by ActiveTrip and EndTrip. This is clean.",
+    "App.tsx now uses c.isDark for the navigation theme instead of the brittle hex comparison. The iteration 10 suggestion is resolved.",
+    "HomeScreen logoutBtn has minHeight/minWidth 44 and padding 8. On web, handleLogout bypasses Alert, which is good because Alert is a no-op on web.",
+    "There are still hardcoded colours outside the palette: '#16a34a' (StopsCard badgeDone), '#22c55e' (Home activeDot, decorative), and the auth screens' rgba(255,255,255,0.35) placeholders."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend only)", "frontend": "93% (13 of 14 checks pass). Only the Duration label falls short at 4.19 against the 4.5 target. The intermittent header colour is cosmetic."},
+  "seed_data_creation": "None. No trips were created; the Start Trip flow stopped at step 2 and went back. Michael's in-progress trip was not modified: the End Trip screen was opened but not submitted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The contrast helper composites the RGBA background stack and text alpha in page.evaluate, then reports the WCAG ratio. To read the header colour, use document.elementFromPoint(300,30) and walk up to the first non-transparent background. page.go_back() leaves the app (about:blank) because there is no URL linking; use the header back arrow at about (26,32) instead. Logout on web is immediate, with no Alert."
+}

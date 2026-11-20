@@ -3,10 +3,13 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView,
 import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { useColors, useStyles, type Palette } from '../theme';
 import { keepPhoto, submitEnd } from '../services/offlineTrips';
 
 export default function EndTripScreen() {
   const navigation = useNavigation<any>();
+  const styles = useStyles(makeStyles);
+  const c = useColors();
   const route = useRoute<any>();
   const trip = route.params?.trip;
 
@@ -108,6 +111,7 @@ export default function EndTripScreen() {
         style={styles.input}
         testID="end-odometer-input"
         placeholder="Enter current odometer"
+        placeholderTextColor={c.placeholder}
         value={odometer}
         onChangeText={setOdometer}
         keyboardType="numeric"
@@ -140,21 +144,21 @@ export default function EndTripScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', padding: 20 },
-  summaryCard: { backgroundColor: '#fff', padding: 20, borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: '#e2e8f0' },
-  summaryTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a', marginBottom: 16, letterSpacing: -0.2 },
+const makeStyles = (c: Palette) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bg, padding: 20 },
+  summaryCard: { backgroundColor: c.card, padding: 20, borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: c.border },
+  summaryTitle: { fontSize: 17, fontWeight: '700', color: c.text, marginBottom: 16, letterSpacing: -0.2 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  summaryLabel: { fontSize: 14, color: '#94a3b8' },
-  summaryValue: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#64748b', marginTop: 18, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 14, padding: 16, fontSize: 16, color: '#0f172a' },
-  mileageCard: { backgroundColor: '#eff6ff', padding: 18, borderRadius: 16, marginTop: 15, alignItems: 'center', borderWidth: 1, borderColor: '#bfdbfe' },
-  mileageLabel: { fontSize: 12, color: '#3b82f6', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  mileageValue: { fontSize: 28, fontWeight: '800', color: '#1e40af', marginTop: 4, letterSpacing: -0.5 },
-  photoButton: { backgroundColor: '#fff', borderWidth: 2, borderColor: '#e2e8f0', borderStyle: 'dashed', borderRadius: 16, height: 150, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  photoButtonText: { color: '#94a3b8', fontSize: 15, fontWeight: '500' },
+  summaryLabel: { fontSize: 14, color: c.textMuted },
+  summaryValue: { fontSize: 14, fontWeight: '700', color: c.text },
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: c.textMuted, marginTop: 18, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  input: { backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 14, padding: 16, fontSize: 16, color: c.text },
+  mileageCard: { backgroundColor: c.primarySoft, padding: 18, borderRadius: 16, marginTop: 15, alignItems: 'center', borderWidth: 1, borderColor: c.primaryBorder },
+  mileageLabel: { fontSize: 12, color: c.primaryText, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  mileageValue: { fontSize: 28, fontWeight: '800', color: c.primaryText, marginTop: 4, letterSpacing: -0.5 },
+  photoButton: { backgroundColor: c.card, borderWidth: 2, borderColor: c.border, borderStyle: 'dashed', borderRadius: 16, height: 150, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  photoButtonText: { color: c.textMuted, fontSize: 15, fontWeight: '500' },
   photoPreview: { width: '100%', height: '100%' },
-  endButton: { backgroundColor: '#059669', padding: 18, borderRadius: 16, alignItems: 'center', marginTop: 30, marginBottom: 40, shadowColor: '#059669', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  endButton: { backgroundColor: c.success, padding: 18, borderRadius: 16, alignItems: 'center', marginTop: 30, marginBottom: 40, shadowColor: c.success, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   endButtonText: { color: '#fff', fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
 });

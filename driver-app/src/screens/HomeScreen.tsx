@@ -2,12 +2,15 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, Platform } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import { useColors, useStyles, type Palette } from '../theme';
 import PendingTrips from '../components/PendingTrips';
 import StopsCard from '../components/StopsCard';
 import { getActiveTrip, getAssignedVehicle, getStops, getRecentTrips, subscribeToStops, type Stop, loadQueue, subscribeToQueue, type TripHistory } from '../services/offlineTrips';
 
 export default function HomeScreen() {
   const { driver, logout } = useAuth();
+  const styles = useStyles(makeStyles);
+  const c = useColors();
   const navigation = useNavigation<any>();
   const [activeTrip, setActiveTrip] = useState<any>(null);
   const [recentTrips, setRecentTrips] = useState<any[]>([]);
@@ -95,7 +98,7 @@ export default function HomeScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.primary} />
       </View>
     );
   }
@@ -112,7 +115,7 @@ export default function HomeScreen() {
           <Text style={styles.greeting}>{'Hello, ' + driverName}</Text>
           <Text style={styles.sub}>{'ID: ' + driverId}</Text>
         </View>
-        <TouchableOpacity onPress={handleLogout} testID="home-logout-button">
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} testID="home-logout-button">
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </View>
@@ -154,7 +157,7 @@ export default function HomeScreen() {
           }
         }}
       >
-        <Text style={styles.newTripBtnText}>{activeTrip ? 'End Current Trip First' : '+ Start New Trip'}</Text>
+        <Text style={[styles.newTripBtnText, activeTrip && styles.newTripBtnTextDisabled]}>{activeTrip ? 'End Current Trip First' : '+ Start New Trip'}</Text>
       </TouchableOpacity>
 
       <View style={styles.historyHeader}>
@@ -226,50 +229,52 @@ export default function HomeScreen() {
   );
 }
 
-var styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
+const makeStyles = (c: Palette) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bg },
   scroll: { padding: 16, paddingBottom: 40 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.bg },
 
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, paddingTop: 4 },
-  greeting: { fontSize: 24, fontWeight: '800', color: '#0f172a', letterSpacing: -0.3 },
-  sub: { fontSize: 13, color: '#94a3b8', marginTop: 3, fontWeight: '500' },
-  logoutText: { color: '#ef4444', fontSize: 14, fontWeight: '600' },
+  greeting: { fontSize: 24, fontWeight: '800', color: c.text, letterSpacing: -0.3 },
+  sub: { fontSize: 13, color: c.textMuted, marginTop: 3, fontWeight: '500' },
+  logoutBtn: { minHeight: 44, minWidth: 44, paddingHorizontal: 8, justifyContent: 'center', alignItems: 'center' },
+  logoutText: { color: c.dangerText, fontSize: 15, fontWeight: '700' },
 
-  noticeBanner: { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 14, padding: 14, marginBottom: 16 },
-  noticeText: { fontSize: 14, color: '#1e40af', fontWeight: '600' },
-  activeBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ecfdf5', borderWidth: 1, borderColor: '#86efac', borderRadius: 16, padding: 16, marginBottom: 16 },
+  noticeBanner: { backgroundColor: c.primarySoft, borderWidth: 1, borderColor: c.primaryBorder, borderRadius: 14, padding: 14, marginBottom: 16 },
+  noticeText: { fontSize: 14, color: c.primaryText, fontWeight: '600' },
+  activeBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.successSoft, borderWidth: 1, borderColor: c.successBorder, borderRadius: 16, padding: 16, marginBottom: 16 },
   activeDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#22c55e', marginRight: 14 },
   bannerBody: { flex: 1 },
-  activeTitle: { fontSize: 16, fontWeight: '700', color: '#166534' },
-  activeSub: { fontSize: 13, color: '#15803d', marginTop: 2 },
+  activeTitle: { fontSize: 16, fontWeight: '700', color: c.successText },
+  activeSub: { fontSize: 13, color: c.successText, marginTop: 2 },
 
-  newTripBtn: { backgroundColor: '#2563eb', paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginBottom: 28, shadowColor: '#2563eb', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
-  newTripBtnDisabled: { backgroundColor: '#93c5fd', paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginBottom: 28 },
+  newTripBtn: { backgroundColor: c.primary, paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginBottom: 28, shadowColor: '#2563eb', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  newTripBtnDisabled: { backgroundColor: c.primaryDisabled, paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginBottom: 28 },
+  newTripBtnTextDisabled: { color: c.textSoft },
   newTripBtnText: { color: '#fff', fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
 
-  sectionTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a', letterSpacing: -0.2 },
+  sectionTitle: { fontSize: 17, fontWeight: '700', color: c.text, letterSpacing: -0.2 },
   historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 },
-  totalMiles: { fontSize: 13, fontWeight: '600', color: '#64748b' },
-  offlineBanner: { backgroundColor: '#f1f5f9', borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0' },
-  offlineText: { fontSize: 13, color: '#475569' },
-  pendingTag: { fontSize: 10, fontWeight: '700', color: '#b45309', marginTop: 2 },
+  totalMiles: { fontSize: 13, fontWeight: '600', color: c.textMuted },
+  offlineBanner: { backgroundColor: c.border, borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: c.border },
+  offlineText: { fontSize: 13, color: c.textSoft },
+  pendingTag: { fontSize: 10, fontWeight: '700', color: c.warnText, marginTop: 2 },
 
-  table: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#e2e8f0' },
-  tableHeaderRow: { flexDirection: 'row', backgroundColor: '#f8fafc', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
-  thDate: { flex: 1.2, fontSize: 11, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
-  thVehicle: { flex: 1, fontSize: 11, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
-  thDur: { flex: 0.7, fontSize: 11, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
-  thMiles: { flex: 0.6, fontSize: 11, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'right' },
-  rowEven: { flexDirection: 'row', backgroundColor: '#fff', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  rowOdd: { flexDirection: 'row', backgroundColor: '#f8fafc', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  table: { backgroundColor: c.card, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: c.border },
+  tableHeaderRow: { flexDirection: 'row', backgroundColor: c.bg, paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: c.border },
+  thDate: { flex: 1.2, fontSize: 11, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  thVehicle: { flex: 1, fontSize: 11, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  thDur: { flex: 0.7, fontSize: 11, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  thMiles: { flex: 0.6, fontSize: 11, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'right' },
+  rowEven: { flexDirection: 'row', backgroundColor: c.card, paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: c.border },
+  rowOdd: { flexDirection: 'row', backgroundColor: c.bg, paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: c.border },
   colDate: { flex: 1.2, paddingRight: 4 },
   colVehicle: { flex: 1, paddingRight: 4, overflow: 'hidden' },
   colDur: { flex: 0.7, justifyContent: 'center' },
   colMiles: { flex: 0.6, alignItems: 'flex-end', justifyContent: 'center' },
-  cellMain: { fontSize: 13, fontWeight: '600', color: '#1e293b' },
-  cellSub: { fontSize: 10, color: '#94a3b8', marginTop: 2 },
+  cellMain: { fontSize: 13, fontWeight: '600', color: c.text },
+  cellSub: { fontSize: 10, color: c.textMuted, marginTop: 2 },
 
   emptyRow: { padding: 30, alignItems: 'center' },
-  emptyText: { fontSize: 15, color: '#94a3b8' },
+  emptyText: { fontSize: 15, color: c.textMuted },
 });

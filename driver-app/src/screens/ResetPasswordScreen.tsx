@@ -66,7 +66,7 @@ export default function ResetPasswordScreen() {
             <TextInput
               style={styles.input}
               placeholder="New Password (min. 6 characters)"
-              placeholderTextColor="rgba(255,255,255,0.35)"
+              placeholderTextColor="rgba(255,255,255,0.6)"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -74,7 +74,7 @@ export default function ResetPasswordScreen() {
             <TextInput
               style={styles.input}
               placeholder="Confirm New Password"
-              placeholderTextColor="rgba(255,255,255,0.35)"
+              placeholderTextColor="rgba(255,255,255,0.6)"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry

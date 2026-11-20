@@ -4,10 +4,13 @@ import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { useColors, useStyles, type Palette } from '../theme';
 import { getAssignedVehicle, getSavedDestination, keepPhoto, submitStart } from '../services/offlineTrips';
 
 export default function StartTripScreen() {
   const navigation = useNavigation<any>();
+  const styles = useStyles(makeStyles);
+  const c = useColors();
   const [assignedVehicle, setAssignedVehicle] = useState<any>(null);
   const [odometer, setOdometer] = useState('');
   const [licensePlatePhoto, setLicensePlatePhoto] = useState<string | null>(null);
@@ -155,7 +158,7 @@ export default function StartTripScreen() {
   if (loadingVehicle) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color={c.primary} />
       </View>
     );
   }
@@ -209,7 +212,7 @@ export default function StartTripScreen() {
             style={styles.input}
             testID="start-odometer-input"
             placeholder="Enter current odometer"
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={c.placeholder}
             value={odometer}
             onChangeText={setOdometer}
             keyboardType="numeric"
@@ -279,34 +282,34 @@ export default function StartTripScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#f8fafc' },
+const makeStyles = (c: Palette) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: c.bg },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 32 },
   progressHeader: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, gap: 8 },
-  stepCount: { fontSize: 13, fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 },
-  progressTrack: { height: 8, borderRadius: 4, backgroundColor: '#e2e8f0', overflow: 'hidden' },
-  progressFill: { height: 8, borderRadius: 4, backgroundColor: '#2563eb' },
-  stepTitle: { fontSize: 24, fontWeight: '800', color: '#0f172a', letterSpacing: -0.4 },
-  stepHint: { fontSize: 15, color: '#64748b', marginTop: 6, marginBottom: 20, lineHeight: 22 },
-  footer: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 28, borderTopWidth: 1, borderTopColor: '#e2e8f0', backgroundColor: '#fff' },
+  stepCount: { fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  progressTrack: { height: 8, borderRadius: 4, backgroundColor: c.border, overflow: 'hidden' },
+  progressFill: { height: 8, borderRadius: 4, backgroundColor: c.primary },
+  stepTitle: { fontSize: 24, fontWeight: '800', color: c.text, letterSpacing: -0.4 },
+  stepHint: { fontSize: 15, color: c.textMuted, marginTop: 6, marginBottom: 20, lineHeight: 22 },
+  footer: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 28, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.card },
   flex: { flex: 1 },
   disabled: { opacity: 0.4 },
-  backStep: { minHeight: 56, paddingHorizontal: 22, borderRadius: 16, borderWidth: 1, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center' },
-  backStepText: { fontSize: 16, fontWeight: '700', color: '#334155' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#f8fafc' },
-  noVehicleTitle: { fontSize: 22, fontWeight: '800', color: '#dc2626', marginBottom: 12, letterSpacing: -0.3 },
-  noVehicleText: { fontSize: 15, color: '#94a3b8', textAlign: 'center', lineHeight: 24 },
-  backButton: { marginTop: 24, backgroundColor: '#2563eb', paddingHorizontal: 30, paddingVertical: 14, borderRadius: 14, shadowColor: '#2563eb', shadowOpacity: 0.25, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
+  backStep: { minHeight: 56, paddingHorizontal: 22, borderRadius: 16, borderWidth: 1, borderColor: c.borderStrong, alignItems: 'center', justifyContent: 'center' },
+  backStepText: { fontSize: 16, fontWeight: '700', color: c.textSoft },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: c.bg },
+  noVehicleTitle: { fontSize: 22, fontWeight: '800', color: c.dangerText, marginBottom: 12, letterSpacing: -0.3 },
+  noVehicleText: { fontSize: 15, color: c.textMuted, textAlign: 'center', lineHeight: 24 },
+  backButton: { marginTop: 24, backgroundColor: c.primary, paddingHorizontal: 30, paddingVertical: 14, borderRadius: 14, shadowColor: '#2563eb', shadowOpacity: 0.25, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
   backButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#64748b', marginTop: 18, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  vehicleCard: { backgroundColor: '#eff6ff', borderWidth: 1.5, borderColor: '#93c5fd', borderRadius: 16, padding: 18 },
-  vehiclePlate: { fontSize: 22, fontWeight: '800', color: '#1e40af', letterSpacing: -0.3 },
-  vehicleInfo: { fontSize: 14, color: '#3b82f6', marginTop: 4, fontWeight: '500' },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 14, padding: 16, fontSize: 16, color: '#0f172a' },
-  photoButton: { backgroundColor: '#fff', borderWidth: 2, borderColor: '#cbd5e1', borderStyle: 'dashed', borderRadius: 16, height: 240, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  photoButtonText: { color: '#94a3b8', fontSize: 15, fontWeight: '500' },
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: c.textMuted, marginTop: 18, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  vehicleCard: { backgroundColor: c.primarySoft, borderWidth: 1.5, borderColor: c.primaryBorder, borderRadius: 16, padding: 18 },
+  vehiclePlate: { fontSize: 22, fontWeight: '800', color: c.primaryText, letterSpacing: -0.3 },
+  vehicleInfo: { fontSize: 14, color: c.primaryText, marginTop: 4, fontWeight: '500' },
+  input: { backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 14, padding: 16, fontSize: 16, color: c.text },
+  photoButton: { backgroundColor: c.card, borderWidth: 2, borderColor: c.borderStrong, borderStyle: 'dashed', borderRadius: 16, height: 240, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  photoButtonText: { color: c.textMuted, fontSize: 15, fontWeight: '500' },
   photoPreview: { width: '100%', height: '100%' },
-  startButton: { backgroundColor: '#2563eb', minHeight: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#2563eb', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  startButton: { backgroundColor: c.primary, minHeight: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#2563eb', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   startButtonText: { color: '#fff', fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
 });

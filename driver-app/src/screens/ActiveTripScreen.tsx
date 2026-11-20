@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, ScrollView } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useStyles, type Palette } from '../theme';
 import StopsCard from '../components/StopsCard';
 import { useTripTracking } from '../hooks/useTripTracking';
 import { getStops, subscribeToStops, type Stop } from '../services/offlineTrips';
 
 export default function ActiveTripScreen() {
   const navigation = useNavigation<any>();
+  const styles = useStyles(makeStyles);
   const route = useRoute<any>();
   const trip = route.params?.trip;
 
@@ -98,21 +100,21 @@ export default function ActiveTripScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: '#f8fafc' },
+const makeStyles = (c: Palette) => StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: c.bg },
   container: { flexGrow: 1, padding: 20, paddingBottom: 32 },
-  statusCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ecfdf5', padding: 16, borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: '#86efac' },
+  statusCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.successSoft, padding: 16, borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: c.successBorder },
   statusIndicator: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e', marginRight: 12 },
-  statusText: { fontSize: 17, fontWeight: '700', color: '#166534' },
-  pendingCard: { backgroundColor: '#fffbeb', padding: 14, borderRadius: 14, marginBottom: 14, borderWidth: 1, borderColor: '#fcd34d' },
-  pendingText: { fontSize: 14, color: '#92400e', fontWeight: '500', lineHeight: 20 },
-  infoCard: { backgroundColor: '#fff', padding: 18, borderRadius: 16, marginBottom: 14, borderWidth: 1, borderColor: '#e2e8f0' },
-  infoLabel: { fontSize: 12, color: '#94a3b8', marginBottom: 4, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  infoValue: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
-  infoSub: { fontSize: 14, color: '#94a3b8', marginTop: 2 },
-  durationCard: { backgroundColor: '#2563eb', padding: 28, borderRadius: 20, marginBottom: 14, alignItems: 'center', shadowColor: '#2563eb', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
-  durationLabel: { fontSize: 14, color: '#93c5fd', marginBottom: 6, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
+  statusText: { fontSize: 17, fontWeight: '700', color: c.successText },
+  pendingCard: { backgroundColor: c.warnSoft, padding: 14, borderRadius: 14, marginBottom: 14, borderWidth: 1, borderColor: c.warnBorder },
+  pendingText: { fontSize: 14, color: c.warnText, fontWeight: '500', lineHeight: 20 },
+  infoCard: { backgroundColor: c.card, padding: 18, borderRadius: 16, marginBottom: 14, borderWidth: 1, borderColor: c.border },
+  infoLabel: { fontSize: 12, color: c.textMuted, marginBottom: 4, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  infoValue: { fontSize: 18, fontWeight: '700', color: c.text },
+  infoSub: { fontSize: 14, color: c.textMuted, marginTop: 2 },
+  durationCard: { backgroundColor: c.primary, padding: 28, borderRadius: 20, marginBottom: 14, alignItems: 'center', shadowColor: '#2563eb', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
+  durationLabel: { fontSize: 14, color: '#fff', marginBottom: 6, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
   durationValue: { fontSize: 44, fontWeight: '800', color: '#fff', letterSpacing: 2 },
-  endButton: { backgroundColor: '#ef4444', padding: 18, borderRadius: 16, alignItems: 'center', marginTop: 'auto', shadowColor: '#ef4444', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  endButton: { backgroundColor: c.danger, padding: 18, borderRadius: 16, alignItems: 'center', marginTop: 'auto', shadowColor: c.danger, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   endButtonText: { color: '#fff', fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
 });

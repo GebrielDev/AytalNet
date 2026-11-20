@@ -63,3 +63,5 @@ a Node/Express/PostgreSQL backend on Railway, a React web dashboard, and an Expo
 ## 2026-06 (fork 2)
 - Dark-mode polish verified (iteration 9): stat tiles, role badges, StatDetail badges, gray secondary text (dark --gray-400 = 120 136 160) all readable. Stops board re-renders every 30 s so "Live" turns into "Last seen" after 3 min.
 - Preview dashboard build MUST use: `VITE_API_URL=<preview>/api VITE_SOCKET_PATH=/api/socket.io npx vite build --base=/api/dashboard/` (plain `vite build` gives a blank page in preview). Railway serves at root, so a plain build is right there.
+- 2026-06: Driver app dark mode follows the phone (app.json userInterfaceStyle automatic, expo-system-ui). Colours live in driver-app/src/theme.ts (useColors/useStyles). Light-mode secondary text darkened (#55657a); button colours meet 4.5 contrast. Dashboard .text-gray-400 now renders gray-500 in both themes. Verified iterations 10-11.
+- Store readiness review done (report in chat): main gaps are an in-app privacy policy link, support contact, clearer permission texts, and a root error boundary.

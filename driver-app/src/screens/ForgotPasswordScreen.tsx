@@ -52,7 +52,7 @@ export default function ForgotPasswordScreen() {
             <TextInput
               style={styles.input}
               placeholder="Email"
-              placeholderTextColor="rgba(255,255,255,0.35)"
+              placeholderTextColor="rgba(255,255,255,0.6)"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
