@@ -44,6 +44,11 @@ a Node/Express/PostgreSQL backend on Railway, a React web dashboard, and an Expo
 
 - 2026-06: Board map view. The Stops board has a Leaflet map showing each driver's last known location (from the latest trip start/end or stop arrival; there is no continuous tracking) and their next stop, joined by a dashed line. Clicking a card focuses that driver. `driver_stops` gained arrived_latitude/longitude.
 
+- 2026-06: Live driver tracking. `POST /api/drivers/my-location` is accepted only during an in-progress trip, at most once every 10 s, and is stored on drivers.last_*. It emits `driver:location`, which moves the board map dot live. The app's useTripTracking hook (foreground only) watches position every 30 s / 50 m on Home (during a trip) and on Active Trip.
+- 2026-06: Step-by-step start. StartTrip is now 5 guided steps with an animated progress bar, fade transitions, larger photo boxes and a sticky footer with Back/Next.
+- 2026-06: Dashboard brand refresh. The Tailwind gray and blue scales are now CSS variables: blue is the STS navy brand, and dark mode works via the .dark class plus a ThemeToggle in the header (saved in localStorage, defaulting to the system setting). The font is Plus Jakarta Sans.
+- NOT DONE: a driver app theme with dark mode (its colours are still written into each screen). Background location needs a store build.
+
 ## Known limits
 - The preview test copy (Postgres plus the supervisor program) is lost when the container restarts and has to be set up again.
 - The live server needs this backend deployed to Railway, with `PHOTO_STORAGE=emergent`, `EMERGENT_LLM_KEY` and `PUBLIC_API_URL`, before the new app build ships.
@@ -54,3 +59,7 @@ a Node/Express/PostgreSQL backend on Railway, a React web dashboard, and an Expo
 - P0: deploy the backend to Railway, then build and submit 1.1.0
 - P1: move existing Cloudinary photos to Emergent storage; preload the vehicle at login
 - P2: dashboard view of trips that synced late
+
+## 2026-06 (fork 2)
+- Dark-mode polish verified (iteration 9): stat tiles, role badges, StatDetail badges, gray secondary text (dark --gray-400 = 120 136 160) all readable. Stops board re-renders every 30 s so "Live" turns into "Last seen" after 3 min.
+- Preview dashboard build MUST use: `VITE_API_URL=<preview>/api VITE_SOCKET_PATH=/api/socket.io npx vite build --base=/api/dashboard/` (plain `vite build` gives a blank page in preview). Railway serves at root, so a plain build is right there.

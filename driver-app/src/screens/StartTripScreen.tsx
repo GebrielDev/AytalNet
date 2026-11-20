@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Image, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Image, ActivityIndicator, Animated, Easing } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { getAssignedVehicle, getSavedDestination, keepPhoto, submitStart } from '../services/offlineTrips';
@@ -15,6 +16,20 @@ export default function StartTripScreen() {
   const [passengerPhoto, setPassengerPhoto] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingVehicle, setLoadingVehicle] = useState(true);
+  const [step, setStep] = useState(0);
+  const insets = useSafeAreaInsets();
+  const progress = useRef(new Animated.Value(1 / 5)).current;
+  const fade = useRef(new Animated.Value(1)).current;
+
+  // Slides the progress bar and fades the next step in.
+  const goTo = (next: number) => {
+    setStep(next);
+    fade.setValue(0);
+    Animated.parallel([
+      Animated.timing(progress, { toValue: (next + 1) / 5, duration: 250, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+      Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: false }),
+    ]).start();
+  };
 
   useEffect(() => {
     fetchAssignedVehicle();
@@ -159,73 +174,126 @@ export default function StartTripScreen() {
     );
   }
 
+  const photoBox = (uri: string | null, label: string, onPress: () => void, testID: string) => (
+    <TouchableOpacity style={styles.photoButton} onPress={onPress} testID={testID}>
+      {uri ? <Image source={{ uri }} style={styles.photoPreview} /> : <Text style={styles.photoButtonText}>{label}</Text>}
+    </TouchableOpacity>
+  );
+
+  // One thing at a time: each step has to be done before Next is enabled.
+  const steps = [
+    {
+      title: 'Confirm your vehicle',
+      hint: 'This is the vehicle the office assigned to you.',
+      ready: true,
+      body: (
+        <View style={styles.vehicleCard} testID="start-assigned-vehicle">
+          <Text style={styles.vehiclePlate}>{assignedVehicle.plateNumber}</Text>
+          <Text style={styles.vehicleInfo}>{assignedVehicle.make} {assignedVehicle.model}</Text>
+        </View>
+      ),
+    },
+    {
+      title: 'Photo of the license plate',
+      hint: 'Make sure the whole plate is readable.',
+      ready: !!licensePlatePhoto,
+      body: photoBox(licensePlatePhoto, 'Tap to take the plate photo', () => takePhoto('license_plate'), 'start-license-plate-photo'),
+    },
+    {
+      title: 'Odometer reading',
+      hint: 'Type the reading, then photograph the odometer.',
+      ready: odometer.trim() !== '' && !!odometerPhoto,
+      body: (
+        <View style={{ gap: 12 }}>
+          <TextInput
+            style={styles.input}
+            testID="start-odometer-input"
+            placeholder="Enter current odometer"
+            placeholderTextColor="#94a3b8"
+            value={odometer}
+            onChangeText={setOdometer}
+            keyboardType="numeric"
+          />
+          {photoBox(odometerPhoto, 'Tap to take the odometer photo', () => takePhoto('odometer'), 'start-odometer-photo')}
+        </View>
+      ),
+    },
+    {
+      title: 'Your selfie',
+      hint: 'Confirms who is driving.',
+      ready: !!selfiePhoto,
+      body: photoBox(selfiePhoto, 'Tap to take a selfie', () => takePhoto('selfie'), 'start-selfie-photo'),
+    },
+    {
+      title: 'Passenger photo (optional)',
+      hint: 'Only with the passenger\'s knowledge. You can skip this.',
+      ready: true,
+      body: photoBox(passengerPhoto, 'Tap to take a passenger photo', () => takePhoto('passenger'), 'start-passenger-photo'),
+    },
+  ];
+  const current = steps[step];
+  const last = step === steps.length - 1;
+
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.sectionTitle}>Assigned Vehicle</Text>
-      <View style={styles.vehicleCard} testID="start-assigned-vehicle">
-        <Text style={styles.vehiclePlate}>{assignedVehicle.plateNumber}</Text>
-        <Text style={styles.vehicleInfo}>{assignedVehicle.make} {assignedVehicle.model}</Text>
+    <View style={styles.screen}>
+      <View style={styles.progressHeader}>
+        <Text style={styles.stepCount} testID="start-step-count">Step {step + 1} of {steps.length}</Text>
+        <View style={styles.progressTrack}>
+          <Animated.View
+            testID="start-progress-bar"
+            style={[styles.progressFill, { width: progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }]}
+          />
+        </View>
       </View>
 
-      <Text style={styles.sectionTitle}>License Plate Photo *</Text>
-      <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('license_plate')} testID="start-license-plate-photo">
-        {licensePlatePhoto ? (
-          <Image source={{ uri: licensePlatePhoto }} style={styles.photoPreview} />
-        ) : (
-          <Text style={styles.photoButtonText}>Take Photo of License Plate</Text>
-        )}
-      </TouchableOpacity>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Animated.View style={{ opacity: fade, transform: [{ translateY: fade.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
+          <Text style={styles.stepTitle} testID="start-step-title">{current.title}</Text>
+          <Text style={styles.stepHint}>{current.hint}</Text>
+          {current.body}
+        </Animated.View>
+      </ScrollView>
 
-      <Text style={styles.sectionTitle}>Odometer Reading *</Text>
-      <TextInput
-        style={styles.input}
-        testID="start-odometer-input"
-        placeholder="Enter current odometer"
-        value={odometer}
-        onChangeText={setOdometer}
-        keyboardType="numeric"
-      />
-
-      <Text style={styles.sectionTitle}>Driver Selfie *</Text>
-      <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('selfie')} testID="start-selfie-photo">
-        {selfiePhoto ? (
-          <Image source={{ uri: selfiePhoto }} style={styles.photoPreview} />
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+        {step > 0 ? (
+          <TouchableOpacity style={styles.backStep} onPress={() => goTo(step - 1)} testID="start-step-back">
+            <Text style={styles.backStepText}>Back</Text>
+          </TouchableOpacity>
+        ) : null}
+        {last ? (
+          <TouchableOpacity style={[styles.startButton, styles.flex]} onPress={startTrip} disabled={loading} testID="start-trip-submit">
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.startButtonText}>Start Trip</Text>}
+          </TouchableOpacity>
         ) : (
-          <Text style={styles.photoButtonText}>Take Selfie</Text>
+          <TouchableOpacity
+            style={[styles.startButton, styles.flex, !current.ready && styles.disabled]}
+            onPress={() => goTo(step + 1)}
+            disabled={!current.ready}
+            testID="start-step-next"
+          >
+            <Text style={styles.startButtonText}>Next</Text>
+          </TouchableOpacity>
         )}
-      </TouchableOpacity>
-
-      <Text style={styles.sectionTitle}>Odometer Photo *</Text>
-      <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('odometer')} testID="start-odometer-photo">
-        {odometerPhoto ? (
-          <Image source={{ uri: odometerPhoto }} style={styles.photoPreview} />
-        ) : (
-          <Text style={styles.photoButtonText}>Take Photo of Odometer</Text>
-        )}
-      </TouchableOpacity>
-
-      <Text style={styles.sectionTitle}>Passenger Photo (Optional)</Text>
-      <TouchableOpacity style={styles.photoButton} onPress={() => takePhoto('passenger')} testID="start-passenger-photo">
-        {passengerPhoto ? (
-          <Image source={{ uri: passengerPhoto }} style={styles.photoPreview} />
-        ) : (
-          <Text style={styles.photoButtonText}>Take Passenger Photo</Text>
-        )}
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.startButton} onPress={startTrip} disabled={loading} testID="start-trip-submit">
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.startButtonText}>Start Trip</Text>
-        )}
-      </TouchableOpacity>
-    </ScrollView>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', padding: 20 },
+  screen: { flex: 1, backgroundColor: '#f8fafc' },
+  container: { flex: 1 },
+  content: { padding: 20, paddingBottom: 32 },
+  progressHeader: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, gap: 8 },
+  stepCount: { fontSize: 13, fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 },
+  progressTrack: { height: 8, borderRadius: 4, backgroundColor: '#e2e8f0', overflow: 'hidden' },
+  progressFill: { height: 8, borderRadius: 4, backgroundColor: '#2563eb' },
+  stepTitle: { fontSize: 24, fontWeight: '800', color: '#0f172a', letterSpacing: -0.4 },
+  stepHint: { fontSize: 15, color: '#64748b', marginTop: 6, marginBottom: 20, lineHeight: 22 },
+  footer: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 28, borderTopWidth: 1, borderTopColor: '#e2e8f0', backgroundColor: '#fff' },
+  flex: { flex: 1 },
+  disabled: { opacity: 0.4 },
+  backStep: { minHeight: 56, paddingHorizontal: 22, borderRadius: 16, borderWidth: 1, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center' },
+  backStepText: { fontSize: 16, fontWeight: '700', color: '#334155' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#f8fafc' },
   noVehicleTitle: { fontSize: 22, fontWeight: '800', color: '#dc2626', marginBottom: 12, letterSpacing: -0.3 },
   noVehicleText: { fontSize: 15, color: '#94a3b8', textAlign: 'center', lineHeight: 24 },
@@ -236,9 +304,9 @@ const styles = StyleSheet.create({
   vehiclePlate: { fontSize: 22, fontWeight: '800', color: '#1e40af', letterSpacing: -0.3 },
   vehicleInfo: { fontSize: 14, color: '#3b82f6', marginTop: 4, fontWeight: '500' },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 14, padding: 16, fontSize: 16, color: '#0f172a' },
-  photoButton: { backgroundColor: '#fff', borderWidth: 2, borderColor: '#e2e8f0', borderStyle: 'dashed', borderRadius: 16, height: 150, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  photoButton: { backgroundColor: '#fff', borderWidth: 2, borderColor: '#cbd5e1', borderStyle: 'dashed', borderRadius: 16, height: 240, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
   photoButtonText: { color: '#94a3b8', fontSize: 15, fontWeight: '500' },
   photoPreview: { width: '100%', height: '100%' },
-  startButton: { backgroundColor: '#2563eb', padding: 18, borderRadius: 16, alignItems: 'center', marginTop: 30, marginBottom: 40, shadowColor: '#2563eb', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  startButton: { backgroundColor: '#2563eb', minHeight: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#2563eb', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   startButtonText: { color: '#fff', fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
 });

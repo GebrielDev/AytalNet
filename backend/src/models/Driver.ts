@@ -27,11 +27,15 @@ interface DriverAttributes {
   // arrival check. Null when the address could not be found.
   destinationLatitude?: number | null;
   destinationLongitude?: number | null;
+  // Live position, sent by the app every ~30 s while a trip is in progress.
+  lastLatitude?: number | null;
+  lastLongitude?: number | null;
+  lastLocatedAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface DriverCreationAttributes extends Optional<DriverAttributes, 'id' | 'status' | 'assignedVehicleId' | 'deactivatedAt' | 'destinationAddress' | 'destinationNote' | 'destinationUpdatedAt' | 'destinationLatitude' | 'destinationLongitude' | 'createdAt' | 'updatedAt'> {}
+interface DriverCreationAttributes extends Optional<DriverAttributes, 'id' | 'status' | 'assignedVehicleId' | 'deactivatedAt' | 'destinationAddress' | 'destinationNote' | 'destinationUpdatedAt' | 'destinationLatitude' | 'destinationLongitude' | 'lastLatitude' | 'lastLongitude' | 'lastLocatedAt' | 'createdAt' | 'updatedAt'> {}
 
 class Driver extends Model<DriverAttributes, DriverCreationAttributes> implements DriverAttributes {
   public id!: number;
@@ -49,6 +53,9 @@ class Driver extends Model<DriverAttributes, DriverCreationAttributes> implement
   public destinationUpdatedAt?: Date | null;
   public destinationLatitude?: number | null;
   public destinationLongitude?: number | null;
+  public lastLatitude?: number | null;
+  public lastLongitude?: number | null;
+  public lastLocatedAt?: Date | null;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 
@@ -144,6 +151,9 @@ Driver.init(
       allowNull: true,
       field: 'destination_longitude',
     },
+    lastLatitude: { type: DataTypes.DECIMAL(10, 7), allowNull: true, field: 'last_latitude' },
+    lastLongitude: { type: DataTypes.DECIMAL(10, 7), allowNull: true, field: 'last_longitude' },
+    lastLocatedAt: { type: DataTypes.DATE, allowNull: true, field: 'last_located_at' },
   },
   {
     sequelize,

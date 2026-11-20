@@ -27,6 +27,10 @@ interface BoardRow {
   total: number;
 }
 
+// "Live" only while points keep arriving (the app sends one every ~30 s).
+const isLive = (r: { lastLocation: { source: string; at: string } | null }) =>
+  !!r.lastLocation && r.lastLocation.source === 'live' && Date.now() - new Date(r.lastLocation.at).getTime() < 3 * 60 * 1000;
+
 const SOCKET_URL = new URL(import.meta.env.VITE_API_URL || '/', window.location.origin).origin;
 
 // Today's times as 8:30 AM; anything older with its date.
@@ -50,6 +54,13 @@ export default function StopsBoard() {
   const [flash, setFlash] = useState<number | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
   const [showMap, setShowMap] = useState(true);
+  // Re-render every 30 s so "Live" turns into "Last seen" once a point goes stale.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 30000);
+    return () => clearInterval(t);
+  }, []);
+
   const timer = useRef<ReturnType<typeof setTimeout>>();
 
   const load = useCallback(async () => {
@@ -100,6 +111,10 @@ export default function StopsBoard() {
       if (/token|Authentication|User not found/i.test(err.message)) retries.push(setTimeout(rejoin, 3000));
     });
     socket.on('stops:changed', refresh);
+    // A driver's live position moves their dot without refetching the board.
+    socket.on('driver:location', (l: { driverId: number; latitude: number; longitude: number; at: string }) => {
+      setRows((list) => list.map((r) => (r.driverId === l.driverId ? { ...r, lastLocation: { latitude: l.latitude, longitude: l.longitude, at: l.at, source: 'live' } } : r)));
+    });
     socket.on('trip:started', refresh);
     socket.on('trip:ended', refresh);
     socket.on('trip:cancelled', refresh);
@@ -180,8 +195,11 @@ export default function StopsBoard() {
                     {r.employeeId}
                     {r.plate ? ` · ${r.plate}` : ''}
                   </p>
-                  <p className="text-xs text-gray-400" data-testid={`stops-board-last-seen-${r.driverId}`}>
-                    {r.lastLocation ? `Last seen ${time(r.lastLocation.at)}` : 'No location yet'}
+                  <p
+                    className={`text-xs ${isLive(r) ? 'text-green-700 font-medium' : 'text-gray-400'}`}
+                    data-testid={`stops-board-last-seen-${r.driverId}`}
+                  >
+                    {r.lastLocation ? (isLive(r) ? `Live · ${time(r.lastLocation.at)}` : `Last seen ${time(r.lastLocation.at)}`) : 'No location yet'}
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
@@ -199,7 +217,7 @@ export default function StopsBoard() {
               {r.total > 0 && (
                 <>
                   <div className="mt-3 flex items-center gap-2">
-                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
                       <div className={`h-full ${pct === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} />
                     </div>
                     <span className="text-xs font-medium text-gray-600" data-testid={`stops-board-progress-${r.driverId}`}>

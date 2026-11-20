@@ -2,12 +2,96 @@
 @tailwind components;
 @tailwind utilities;
 
+/* STS theme: the gray and brand ("blue") scales are variables, so every page
+   switches to dark mode by toggling the .dark class on <html>. */
+:root {
+  --gray-50: 248 250 252;
+  --gray-100: 241 245 249;
+  --gray-200: 226 232 240;
+  --gray-300: 203 213 225;
+  --gray-400: 148 163 184;
+  --gray-500: 100 116 139;
+  --gray-600: 71 85 105;
+  --gray-700: 51 65 85;
+  --gray-800: 30 41 59;
+  --gray-900: 15 23 42;
+  --gray-950: 2 6 23;
+  --brand-50: 238 243 251;
+  --brand-100: 217 227 245;
+  --brand-200: 182 200 236;
+  --brand-300: 137 165 222;
+  --brand-400: 90 126 205;
+  --brand-500: 58 95 184;
+  --brand-600: 39 71 155;
+  --brand-700: 31 58 128;
+  --brand-800: 28 49 104;
+  --brand-900: 26 43 86;
+  --brand-950: 17 28 56;
+  color-scheme: light;
+}
+.dark {
+  --gray-50: 11 18 32;
+  --gray-100: 19 28 46;
+  --gray-200: 31 42 61;
+  --gray-300: 51 65 85;
+  --gray-400: 120 136 160;
+  --gray-500: 139 154 176;
+  --gray-600: 180 192 209;
+  --gray-700: 213 221 232;
+  --gray-800: 232 237 244;
+  --gray-900: 245 247 250;
+  --gray-950: 255 255 255;
+  --brand-50: 22 33 58;
+  --brand-100: 28 42 74;
+  --brand-200: 37 56 106;
+  --brand-300: 53 80 143;
+  --brand-400: 79 111 184;
+  --brand-500: 107 139 214;
+  --brand-600: 91 127 216;
+  --brand-700: 134 163 230;
+  --brand-800: 179 198 240;
+  --brand-900: 219 229 248;
+  --brand-950: 238 243 251;
+  color-scheme: dark;
+}
+
+body {
+  background-color: rgb(var(--gray-50));
+  color: rgb(var(--gray-900));
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Surfaces and status tints that use fixed palette colours. */
+.dark .bg-white { background-color: rgb(19 28 46); }
+.dark .bg-white\/80, .dark .bg-white\/90 { background-color: rgb(19 28 46 / 0.9); }
+.dark .bg-green-50, .dark .bg-green-100 { background-color: rgb(22 163 74 / 0.18); }
+.dark .bg-amber-50, .dark .bg-amber-100, .dark .bg-yellow-100 { background-color: rgb(217 119 6 / 0.18); }
+.dark .bg-red-50, .dark .bg-red-100 { background-color: rgb(220 38 38 / 0.18); }
+.dark .bg-purple-100, .dark .bg-indigo-100 { background-color: rgb(124 58 237 / 0.2); }
+.dark .text-green-700, .dark .text-green-800 { color: rgb(134 239 172); }
+.dark .text-amber-700, .dark .text-amber-800, .dark .text-yellow-800 { color: rgb(252 211 77); }
+.dark .text-red-600, .dark .text-red-700, .dark .text-red-800 { color: rgb(252 165 165); }
+.dark .border-green-200, .dark .border-amber-200, .dark .border-red-200 { border-color: rgb(var(--gray-300)); }
+.dark .leaflet-popup-content-wrapper, .dark .leaflet-popup-tip { background: rgb(19 28 46); color: rgb(var(--gray-900)); }
+/* Remaining fixed tints (stat icons, role badges, avatars). */
+.dark [class*="bg-emerald-"], .dark [class*="bg-teal-"] { background-color: rgb(16 185 129 / 0.18); }
+.dark [class*="bg-violet-"], .dark [class*="bg-purple-"], .dark [class*="bg-indigo-"] { background-color: rgb(139 92 246 / 0.22); }
+.dark [class*="bg-sky-"], .dark [class*="bg-cyan-"] { background-color: rgb(14 165 233 / 0.18); }
+.dark [class*="bg-orange-"], .dark [class*="bg-rose-"], .dark [class*="bg-pink-"] { background-color: rgb(249 115 22 / 0.18); }
+.dark [class*="text-emerald-"], .dark [class*="text-teal-"] { color: rgb(110 231 183); }
+.dark [class*="text-violet-"], .dark [class*="text-purple-"], .dark [class*="text-indigo-"] { color: rgb(196 181 253); }
+.dark [class*="text-sky-"], .dark [class*="text-cyan-"] { color: rgb(125 211 252); }
+.dark [class*="text-orange-"], .dark [class*="text-rose-"], .dark [class*="text-pink-"] { color: rgb(253 186 116); }
+.dark .text-gray-400 { color: rgb(var(--gray-500)); }
+.dark input, .dark select, .dark textarea { color: rgb(var(--gray-900)); }
+.dark input::placeholder { color: rgb(var(--gray-400)); }
+
 html {
   scroll-behavior: smooth;
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

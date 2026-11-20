@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getAllDrivers, getDriverById, createDriver, updateDriver, deleteDriver, assignVehicle, getMyAssignedVehicle, setDriverDestination, getMyDestination, setDriverStops, getDriverStops, getMyStops, arriveAtStop, getStopsBoard } from '../controllers/driverController';
+import { getAllDrivers, getDriverById, createDriver, updateDriver, deleteDriver, assignVehicle, getMyAssignedVehicle, setDriverDestination, getMyDestination, setDriverStops, getDriverStops, getMyStops, arriveAtStop, getStopsBoard, updateMyLocation } from '../controllers/driverController';
 import { authenticateToken, requireUser, requireDriver } from '../middleware/auth';
 
 const router = Router();
@@ -8,6 +8,7 @@ const router = Router();
 router.get('/my-vehicle', authenticateToken, requireDriver, getMyAssignedVehicle);
 router.get('/my-destination', authenticateToken, requireDriver, getMyDestination);
 router.get('/my-stops', authenticateToken, requireDriver, getMyStops);
+router.post('/my-location', authenticateToken, requireDriver, updateMyLocation);
 router.post('/my-stops/:stopId/arrive', authenticateToken, requireDriver, arriveAtStop);
 
 router.use(authenticateToken, requireUser);

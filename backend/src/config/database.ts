@@ -103,6 +103,9 @@ export const connectDatabase = async (): Promise<void> => {
       'ALTER TABLE trips ADD COLUMN IF NOT EXISTS end_distance_meters INTEGER;',
       'ALTER TABLE trips ADD COLUMN IF NOT EXISTS arrived_at_destination BOOLEAN;',
       'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS arrived_latitude DECIMAL(10,7);',
+      'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS last_latitude DECIMAL(10,7);',
+      'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS last_longitude DECIMAL(10,7);',
+      'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS last_located_at TIMESTAMP WITH TIME ZONE;',
       'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS arrived_longitude DECIMAL(10,7);',
     ]) {
       try {

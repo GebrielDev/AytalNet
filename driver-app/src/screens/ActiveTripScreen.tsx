@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, ScrollView } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import StopsCard from '../components/StopsCard';
+import { useTripTracking } from '../hooks/useTripTracking';
 import { getStops, subscribeToStops, type Stop } from '../services/offlineTrips';
 
 export default function ActiveTripScreen() {
@@ -11,6 +12,8 @@ export default function ActiveTripScreen() {
 
   const [duration, setDuration] = useState(0);
   const [stops, setStops] = useState<Stop[]>([]);
+  // The office's board map follows the driver while this trip is open.
+  useTripTracking(true);
 
   useEffect(() => {
     getStops().then(setStops);

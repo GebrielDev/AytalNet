@@ -1,0 +1,32 @@
+{
+  "summary": "Round 9 was frontend only: a dark-mode retest of the web dashboard plus a driver-app spot check. BLOCKER found and fixed so testing could run: the dist served at /api/dashboard/ (built 21:15) was built with plain `vite build`, so index.html loaded /assets/index-*.js and /assets/index-*.css from the root. Both returned 404 and the dashboard was a blank white page. I rebuilt it with the command in /opt/fleet-preview/README.md (VITE_API_URL=<preview>/api VITE_SOCKET_PATH=/api/socket.io npx vite build --base=/api/dashboard/). New dist: index-lSKe9KCi.js plus index-B9W0WFns.css. After the rebuild every iteration_8 dark-mode item passes. Dashboard dark: the Active Trips and Active Drivers tiles are rgb(18,56,61) and the This Week and Active Vehicles tiles are rgb(45,42,90), so there are no white squares. Stat values have contrast 11.17 (emerald and teal) and 9.22 (violet and indigo). Icons are 7.1 to 8.3. Users dark: the admin badge and the avatar initial are rgb(196,181,253) on rgb(45,42,90), contrast 7.14. StatDetail dark: the 'active' badges use the dark emerald tint, contrast 8.28. text-gray-400 in dark (Stops 'Last seen', Drivers 'Next stop', struck-through stops) is rgb(139,154,176), contrast 5.96. Stops board: after a real POST /my-location as Michael, the label read 'Live · 9:19 PM' in green, weight 500 (contrast 12.13 dark, 5.02 light). With the point set 4 min old, a reload shows 'Last seen' in gray. One bug: on an open page the Live label does not expire. Light-mode regression passes on the dashboard tiles and values (5.47 to 7.90), the modal badge (6.78), the admin badge (7.39) and the Stops board. Theme toggle and localStorage persistence work. Driver app at 390x844 with system dark emulated: app.json sets userInterfaceStyle 'light', so the app stays light and no text becomes unreadable from dark mode. It has a separate light-mode issue: slate-400 secondary text has contrast 2.45. No deprecated Expo packages were checked this round; none were found in iteration_8.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Web dashboard build / deploy", "issue": "dist was built without --base=/api/dashboard/ (and without VITE_API_URL / VITE_SOCKET_PATH, since web-dashboard/.env has VITE_API_URL=http://localhost:3000/api). Asset URLs pointed to /assets/*, which returns 404 through the ingress, so the whole dashboard was blank. I rebuilt it with the README command. The same mistake will break publishing unless the base and API URL are set for the target host.", "testID": "n/a", "priority": "CRITICAL"},
+      {"component": "StopsBoard 'Live' label", "issue": "isLive() only runs at render time and there is no ticking timer. On an open page with no socket events, a point that passes 3 minutes old keeps showing 'Live'. Seen: T0 'Live · 9:18 PM' (2m36s old), then T+50s still 'Live · 9:18 PM' (3m26s old). A reload shows 'Last seen' correctly. Fix: add a setInterval (about 30 s) that forces a re-render, or keep a 'now' state. StopsBoard.tsx:31-32,192-195", "testID": "stops-board-last-seen-5", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard (dark)", "issues": ["The Today's Trips tile (bg-blue-50, which maps to brand-50 rgb(22,33,58)) barely shows against the card (rgb(19,28,46)). The icon is still readable. Minor."]},
+      {"screen": "Light mode secondary text (dashboard and driver app)", "issues": ["Dashboard text-gray-400 (for example Stops 'Last seen') in light mode is rgb(148,163,184) on white, contrast 2.56.", "Driver app Home: 'ID: DRV003', the table headers and the trip time and model sub-lines use #94a3b8, contrast 2.45. The Start Trip vehicle model text #3b82f6 on #eff6ff has contrast 3.38. Consider slate-500 (#64748b) for secondary text."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "CRITICAL: always build the dashboard with VITE_API_URL=<host>/api VITE_SOCKET_PATH=/api/socket.io npx vite build --base=/api/dashboard/. Better, set base: '/api/dashboard/' in vite.config.ts (or read it from an env var) so a plain `yarn build` cannot ship a blank page. When publishing, set the production API URL.",
+    "StopsBoard: re-evaluate isLive on a timer (for example a 30 s interval that bumps a 'now' state) so 'Live' changes to 'Last seen' without a reload.",
+    "Optional: give the dark bg-blue-50 stat tile a little more contrast. Raise light-mode secondary text from gray-400 to gray-500 on the dashboard and from #94a3b8 to #64748b in the driver app."
+  ],
+  "critical_code_review_comments": [
+    "index.css: .dark .text-gray-400 is mapped to --gray-500, so in dark mode text-gray-400 and text-gray-500 look the same. --gray-400 (120 136 160) is now used only by placeholders and border/bg-gray-400 utilities. Fine, but intentional?",
+    "The attribute selectors [class*=\"bg-emerald-\"] and similar also match solid shades (bg-emerald-500/600) and hover: variants. None exist today (I checked with grep), but adding a solid emerald or violet button later would turn it into an 18% tint in dark mode."
+  ],
+  "updated_files": ["/app/web-dashboard/dist (rebuilt with the correct --base and env, no source changes)"],
+  "success_rate": {"backend": "not tested (frontend only)", "frontend": "Dark-mode fixes 5/5 pass after the rebuild; light regression passes; Stops Live label 2/3 (styling and on-load cutoff pass, no live expiry); the deployed build was broken before the rebuild"},
+  "seed_data_creation": "Posted one live location as Michael (33.48,-112.06) and changed his last_located_at for staleness checks. Restored afterwards to 33.47, -112.05, 2026-11-20 20:58:30.942+00. No other data changed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The dashboard dist must be built with --base=/api/dashboard/ (see /opt/fleet-preview/README.md), or the page is blank. The Postgres and browser clocks run about 2.5 min ahead of the container's `date`; use now() in psql when you set last_located_at. Michael (driver 5) has an in-progress trip; a POST /api/drivers/my-location as michael sets source 'live'. Driver app: userInterfaceStyle 'light', with no dark theme."
+}

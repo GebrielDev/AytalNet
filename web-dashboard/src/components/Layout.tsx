@@ -1,4 +1,5 @@
 import ArrivalNotices from './ArrivalNotices';
+import ThemeToggle from './ThemeToggle';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ReactNode, useState } from 'react';
@@ -130,6 +131,9 @@ export default function Layout({ children }: { children: ReactNode }) {
           <span className="hidden sm:block text-sm text-gray-500">
             {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
           </span>
+          <div className="ml-3">
+            <ThemeToggle />
+          </div>
         </header>
 
         {/* Page content */}

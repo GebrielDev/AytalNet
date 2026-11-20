@@ -8,11 +8,11 @@ export interface MapRow {
   name: string;
   plate: string | null;
   activeTrip: { id: number } | null;
-  lastLocation: { latitude: number; longitude: number; at: string; source: 'trip_start' | 'trip_end' | 'stop_arrival' } | null;
+  lastLocation: { latitude: number; longitude: number; at: string; source: 'trip_start' | 'trip_end' | 'stop_arrival' | 'live' } | null;
   stops: { id: number; position: number; address: string; latitude: number | null; longitude: number | null; arrivedAt: string | null }[];
 }
 
-const SOURCE = { trip_start: 'trip started', trip_end: 'trip ended', stop_arrival: 'reached a stop' };
+const SOURCE = { trip_start: 'trip started', trip_end: 'trip ended', stop_arrival: 'reached a stop', live: 'live while driving' };
 
 const when = (iso: string) => {
   const d = new Date(iso);
@@ -125,7 +125,7 @@ export default function BoardMap({ rows, focusDriverId, onSelect }: { rows: MapR
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-green-600 inline-block" /> On a trip</span>
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> Last known location</span>
         <span className="flex items-center gap-1"><span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[9px] font-bold inline-flex items-center justify-center">1</span> Next stop</span>
-        <span>Locations come from trip starts, trip ends and stop arrivals</span>
+        <span>Live while a driver has the app open on a trip; otherwise the last trip start, end or stop arrival</span>
       </div>
     </div>
   );

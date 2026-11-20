@@ -371,7 +371,7 @@ const lastKnownLocations = async () => {
     FROM driver_stops WHERE arrived_at IS NOT NULL AND arrived_latitude IS NOT NULL
     ORDER BY driver_id, arrived_at DESC`)) as [any[], unknown];
 
-  type Seen = { latitude: number; longitude: number; at: string; source: 'trip_start' | 'trip_end' | 'stop_arrival' };
+  type Seen = { latitude: number; longitude: number; at: string; source: 'trip_start' | 'trip_end' | 'stop_arrival' | 'live' };
   const seen = new Map<number, Seen>();
   const offer = (driverId: number, p: Seen) => {
     if (!Number.isFinite(p.latitude) || !Number.isFinite(p.longitude)) return;
@@ -384,6 +384,12 @@ const lastKnownLocations = async () => {
     } else if (t.start_latitude != null) {
       offer(t.driver_id, { latitude: Number(t.start_latitude), longitude: Number(t.start_longitude), at: t.start_time, source: 'trip_start' });
     }
+  }
+  const [live] = (await sequelize.query(`
+    SELECT id AS driver_id, last_latitude, last_longitude, last_located_at FROM drivers
+    WHERE last_located_at IS NOT NULL AND last_latitude IS NOT NULL`)) as [any[], unknown];
+  for (const l of live) {
+    offer(l.driver_id, { latitude: Number(l.last_latitude), longitude: Number(l.last_longitude), at: l.last_located_at, source: 'live' });
   }
   for (const a of arrivals) {
     offer(a.driver_id, { latitude: Number(a.arrived_latitude), longitude: Number(a.arrived_longitude), at: a.arrived_at, source: 'stop_arrival' });
@@ -435,5 +441,41 @@ export const getStopsBoard = async (_req: Request, res: Response): Promise<void>
   } catch (error) {
     console.error('[stops] Could not build the stops board', error);
     res.status(500).json({ error: 'Failed to load the stops board' });
+  }
+};
+
+/**
+ * Live location while driving. Accepted only during a trip in progress, so a
+ * driver is never tracked off duty, and at most every 10 s. Each accepted
+ * point is pushed to the dashboard's stops board map at once.
+ */
+export const updateMyLocation = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Numbers only: Number(null) and Number('') are 0, which would put the
+    // driver at 0,0 off the coast of Africa.
+    const { latitude, longitude } = req.body ?? {};
+    const lat = latitude;
+    const lng = longitude;
+    if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      res.status(400).json({ error: 'A valid latitude and longitude are required' });
+      return;
+    }
+    const driver = req.driver!;
+    const onTrip = await Trip.count({ where: { driverId: driver.id, status: 'in_progress' } });
+    if (!onTrip) {
+      res.status(409).json({ error: 'Location is only shared during a trip' });
+      return;
+    }
+    const fresh = await Driver.findByPk(driver.id, { attributes: ['id', 'lastLocatedAt'] });
+    if (fresh?.lastLocatedAt && Date.now() - new Date(fresh.lastLocatedAt).getTime() < 10000) {
+      res.status(202).json({ accepted: false });
+      return;
+    }
+    const at = new Date();
+    await Driver.update({ lastLatitude: lat, lastLongitude: lng, lastLocatedAt: at }, { where: { id: driver.id } });
+    req.app.get('io')?.to('dashboard').emit('driver:location', { driverId: driver.id, latitude: lat, longitude: lng, at, source: 'live' });
+    res.status(202).json({ accepted: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update location' });
   }
 };

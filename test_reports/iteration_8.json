@@ -1,0 +1,40 @@
+{
+  "summary": "Round 8: live tracking API, live board map, 5-step Start Trip in the driver app, and the dashboard brand refresh with dark mode. Backend vitest: 157/157 pass. New pytest suite test_round8_live_location.py: 9/10 pass. The one failure is a real bug: {latitude:null, longitude:null} is accepted as (0,0). The other contract checks pass: 202 accepted:true and accepted:false (10 s throttle), 409 off-trip, 400 for bad coordinates, 403 for a dashboard token, 401 with no token, and stops-board shows lastLocation.source 'live' with the posted coordinates. Board map: with 'Show drivers without stops' ticked and Michael's card visible, a new post changed stops-board-last-seen-5 from 'Live · 9:00 PM' to 'Live · 9:03 PM' and moved his CircleMarker with no page reload. Driver app Start Trip at 390x844 as James: 'Step N of 5' and the title are right, and the progress bar is 0.20/0.40/0.60/0.80/1.00 wide. Next is aria-disabled until each step is done (plate photo; odometer value plus photo, where the value alone is not enough; selfie). The passenger step is optional. Back keeps the photos and the odometer value. Submit landed on ActiveTrip and created trip 27 with 3 photos. The trip was then ended through the UI. Dashboard: Plus Jakarta Sans loads. The primary button is navy rgb(39,71,155) and the active nav item is navy text on brand-50. theme-toggle switches the theme, persists across a reload in localStorage 'theme', and follows the system setting when nothing is stored (checked for dark and light). Dark mode is mostly good on every page, including the trip-details, stops, vehicle and stat-detail modals. A few Tailwind colours have no dark override (see design_issues). The Login page is always dark (a fixed gradient) and looks fine. No deprecated Expo packages found (expo-av, expo-barcode-scanner, expo-background-fetch).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/drivers/my-location", "issue": "Validation uses Number(x), so null, '' and [] become 0 and true becomes 1. {latitude:null, longitude:null} returns 202 accepted:true and saves the driver at (0,0), which shows on the board map. Reproduced in test_bad_coords_400[body4]. driverController.ts:454-456"},
+      {"endpoint": "POST /api/drivers/my-location", "issue": "The 10 s throttle reads lastLocatedAt and then updates it, which is not atomic. Two posts sent at the same moment can both be accepted. Low impact."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Driver live tracking", "issue": "useTripTracking runs on both HomeScreen (line 43) and ActiveTripScreen (line 16). StartTrip uses navigation.replace, so Home stays mounted under ActiveTrip and two watchPositionAsync subscriptions post at once. I saw 3 my-location calls in about 10 s; the server throttle absorbs the extras. Keep one owner, for example Home only or a context.", "affected_testIDs": ["active-trip-end-button", "home-active-trip-banner"]}
+    ],
+    "design_issues": [
+      {"screen": "Dashboard (dark)", "issues": ["Stat-card icon tiles bg-emerald-50 (Active Trips), bg-violet-50 (This Week), bg-teal-50 (Active Drivers) and bg-indigo-50 (Active Vehicles) have no dark override, so they show as bright white squares. The Active Trips icon is nearly invisible.", "Stat values text-violet-700 '14' (contrast 2.40) and text-indigo-700 '6/6' (2.15) are hard to read on the dark card. text-emerald-700 and text-teal-700 also have no override."]},
+      {"screen": "Users (dark)", "issues": ["The admin role badge (bg-purple-100 text-purple-800, Users.tsx:109) is almost invisible: contrast 1.95, dark purple on dark.", "The admin avatar initial text-purple-700 has contrast 2.44 (Users.tsx:154, 201)."]},
+      {"screen": "StatDetail modal (dark)", "issues": ["'active' and 'in_progress' badges (bg-emerald-100 text-emerald-800, StatDetail.tsx:37,40) stay as light-mode pastel pills on the dark modal. Readable, but inconsistent."]},
+      {"screen": "All pages (dark)", "issues": ["text-gray-400 secondary text maps to rgb(85,101,125) on rgb(19,28,46), contrast 2.87. Examples: 'Last seen…' / 'Live · …' on the Stops board, 'Next stop' and stop notes on Drivers, struck-through finished stops. Consider lightening dark --gray-400 to about 120 136 160."]},
+      {"screen": "Stops board", "issues": ["'Live · <time>' looks identical to 'Last seen' (both small gray) and keeps saying Live even when the last point is hours old (app closed mid-trip). Consider a green style and a staleness cut-off of about 2 min."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/regression/test_round8_live_location.py", "/app/test_reports/pytest/round8.xml"],
+  "action_items": [
+    "driverController.updateMyLocation: reject non-number or null latitude/longitude before Number(), e.g. typeof v === 'number' or a non-empty numeric string, so null and '' return 400 instead of being saved as (0,0).",
+    "index.css: add dark overrides for bg-emerald-50/100, bg-violet-50, bg-teal-50, bg-indigo-50, and for text-emerald-700/800, text-violet-700, text-teal-700, text-indigo-700, text-purple-700/800, the same way the green, amber and red ones are done.",
+    "Optional: raise dark --gray-400 contrast; run useTripTracking from a single owner; style 'Live' differently and add a staleness cut-off on the stops board."
+  ],
+  "critical_code_review_comments": [
+    "useTripTracking: on Android, watchPositionAsync with timeInterval 30000 plus distanceInterval 50 only sends after both are met, so a stopped driver gets no updates. That is fine for the board, but worth knowing.",
+    "On web, StartTripScreen's Alert.alert does nothing in react-native-web, so a non-numeric odometer like 'abc' passes the Next step and then fails silently at submit. Next could also check that the value is a number."
+  ],
+  "updated_files": ["/app/test_reports/regression/test_round8_live_location.py (new, outside app folders)"],
+  "success_rate": {"backend": "vitest 157/157; round8 pytest 9/10 (90%)", "frontend": "Start Trip flow 100%; live board 100%; theme toggle/persist/system default 100%; dark mode has 4 groups of colour issues"},
+  "seed_data_creation": "Trip 27 for James (vehicle 3), started and ended through the UI with start and end odometer both 99034, so the vehicle odometer is unchanged. Michael's last_latitude, last_longitude and last_located_at were restored to 33.47, -112.05, 2026-11-20 20:58:30. James's last_* columns were reset to NULL (their original state). Stops for John, Maria and Sarah are untouched; I opened John's stops modal but did not save.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: API_BASE=<EXPO_BACKEND_URL>/api pytest /app/test_reports/regression/test_round8_live_location.py. It sleeps 11 s for the throttle and updates Michael's live location; restore it afterwards via psql (fleet_test DB). The driver-app photo pickers open a web file chooser; use page.expect_file_chooser plus set_files with an in-memory JPEG buffer. Each driver-app browser run starts with a fresh login. The board marker moves 1px at the default US zoom; compare the leaflet path 'd' attributes. The container clock reads Nov 20 2026."
+}
