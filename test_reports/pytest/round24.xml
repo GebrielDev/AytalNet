@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="13" time="102.022" timestamp="2026-11-21T16:09:16.461365+00:00" hostname="agent-env-162fb2ea-1243-4414-ad3a-72d383847f45"><testcase classname="test_reports.regression.test_round24_followups.TestAdminPasswordChangeSignsOut" name="test_user_password_put_revokes" time="2.432" /><testcase classname="test_reports.regression.test_round24_followups.TestAdminPasswordChangeSignsOut" name="test_non_password_update_keeps_session" time="0.687" /><testcase classname="test_reports.regression.test_round24_followups.TestAdminPasswordChangeSignsOut" name="test_driver_password_put_revokes" time="1.775" /><testcase classname="test_reports.regression.test_round24_followups.TestAtomicReset" name="test_concurrent_reset_one_wins[james@fleet.com-driver-DriverTest123!-/auth/driver/login]" time="2.818" /><testcase classname="test_reports.regression.test_round24_followups.TestAtomicReset" name="test_concurrent_reset_one_wins[dispatcher@fleet.com-user-DispatchTest123!-/auth/login]" time="2.835" /><testcase classname="test_reports.regression.test_round24_followups.TestTokenVersionHidden" name="test_admin_endpoints" time="1.914" /><testcase classname="test_reports.regression.test_round24_followups.TestTokenVersionHidden" name="test_driver_endpoints" time="0.913" /><testcase classname="test_reports.regression.test_round24_followups.TestRateLimitFailuresOnly" name="test_60_successful_driver_logins_one_ip" time="63.972"><failure message="requests.exceptions.ConnectTimeout: HTTPSConnectionPool(host='162fb2ea-1243-4414-ad3a-72d383847f45.preview.emergentagent.com', port=443): Max retries exceeded with url: /api/auth/driver/login (Caused by ConnectTimeoutError(&lt;HTTPSConnection(host='162fb2ea-1243-4414-ad3a-72d383847f45.preview.emergentagent.com', port=443) at 0xfa79cad82ed0&gt;, 'Connection to 162fb2ea-1243-4414-ad3a-72d383847f45.preview.emergentagent.com timed out. (connect timeout=30)'))">/root/.venv/lib/python3.11/site-packages/urllib3/connection.py:239: in _new_conn
+    sock = connection.create_connection(
+/root/.venv/lib/python3.11/site-packages/urllib3/util/connection.py:85: in create_connection
+    raise err
+/root/.venv/lib/python3.11/site-packages/urllib3/util/connection.py:73: in create_connection
+    sock.connect(sa)
+E   TimeoutError: timed out
+
+The above exception was the direct cause of the following exception:
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:793: in urlopen
+    response = self._make_request(
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:494: in _make_request
+    raise new_e
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:470: in _make_request
+    self._validate_conn(conn)
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:1125: in _validate_conn
+    conn.connect()
+/root/.venv/lib/python3.11/site-packages/urllib3/connection.py:827: in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/urllib3/connection.py:248: in _new_conn
+    raise ConnectTimeoutError(
+E   urllib3.exceptions.ConnectTimeoutError: (&lt;HTTPSConnection(host='162fb2ea-1243-4414-ad3a-72d383847f45.preview.emergentagent.com', port=443) at 0xfa79cad82ed0&gt;, 'Connection to 162fb2ea-1243-4414-ad3a-72d383847f45.preview.emergentagent.com timed out. (connect timeout=30)')
+
+The above exception was the direct cause of the following exception:
+/root/.venv/lib/python3.11/site-packages/requests/adapters.py:696: in send
+    resp = conn.urlopen(
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:847: in urlopen
+    retries = retries.increment(
+/root/.venv/lib/python3.11/site-packages/urllib3/util/retry.py:555: in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='162fb2ea-1243-4414-ad3a-72d383847f45.preview.emergentagent.com', port=443): Max retries exceeded with url: /api/auth/driver/login (Caused by ConnectTimeoutError(&lt;HTTPSConnection(host='162fb2ea-1243-4414-ad3a-72d383847f45.preview.emergentagent.com', port=443) at 0xfa79cad82ed0&gt;, 'Connection to 162fb2ea-1243-4414-ad3a-72d383847f45.preview.emergentagent.com timed out. (connect timeout=30)'))
+
+During handling of the above exception, another exception occurred:
+test_reports/regression/test_round24_followups.py:194: in test_60_successful_driver_logins_one_ip
+    codes = [post('/auth/driver/login', {'email': DRIVERS[i % 5], 'password': DRV_PW}).status_code for i in range(60)]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test_reports/regression/test_round24_followups.py:194: in &lt;listcomp&gt;
+    codes = [post('/auth/driver/login', {'email': DRIVERS[i % 5], 'password': DRV_PW}).status_code for i in range(60)]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test_reports/regression/test_round24_followups.py:32: in post
+    return requests.post(f'{BASE_URL}{path}', json=body, timeout=30, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/api.py:134: in post
+    return request("post", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/api.py:71: in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:651: in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:784: in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/adapters.py:717: in send
+    raise ConnectTimeout(e, request=request)
+E   requests.exceptions.ConnectTimeout: HTTPSConnectionPool(host='162fb2ea-1243-4414-ad3a-72d383847f45.preview.emergentagent.com', port=443): Max retries exceeded with url: /api/auth/driver/login (Caused by ConnectTimeoutError(&lt;HTTPSConnection(host='162fb2ea-1243-4414-ad3a-72d383847f45.preview.emergentagent.com', port=443) at 0xfa79cad82ed0&gt;, 'Connection to 162fb2ea-1243-4414-ad3a-72d383847f45.preview.emergentagent.com timed out. (connect timeout=30)'))</failure></testcase><testcase classname="test_reports.regression.test_round24_followups.TestRateLimitFailuresOnly" name="test_60_successful_user_logins_one_ip" time="12.614" /><testcase classname="test_reports.regression.test_round24_followups.TestRateLimitFailuresOnly" name="test_11_failures_one_email_429" time="1.536" /><testcase classname="test_reports.regression.test_round24_followups.TestRateLimitFailuresOnly" name="test_failures_on_real_account_then_success_still_counts" time="2.295" /><testcase classname="test_reports.regression.test_round24_followups.TestRateLimitFailuresOnly" name="test_51_failures_across_emails_429" time="7.183" /><testcase classname="test_reports.regression.test_round24_followups.TestExport" name="test_xlsx_and_csv" time="0.881" /></testsuite></testsuites>

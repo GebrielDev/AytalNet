@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { User, Driver, PasswordResetToken } from '../models';
-import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../middleware/auth';
+import { generateAccessToken, generateRefreshToken, verifyRefreshToken, tokenIsCurrent } from '../middleware/auth';
+import { disconnectUserSockets, driverRoom } from '../socket';
 import { sendPasswordResetEmail, emailProvider } from '../config/email';
 
 /**
@@ -34,7 +35,7 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const payload = { id: user.id, email: user.email, type: 'user' as const };
+    const payload = { id: user.id, email: user.email, type: 'user' as const, ver: user.tokenVersion ?? 0 };
     res.json({
       user: { id: user.id, email: user.email, name: user.name, role: user.role },
       accessToken: generateAccessToken(payload),
@@ -65,7 +66,7 @@ export const loginDriver = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const payload = { id: driver.id, email: driver.email, type: 'driver' as const };
+    const payload = { id: driver.id, email: driver.email, type: 'driver' as const, ver: driver.tokenVersion ?? 0 };
     res.json({
       driver: { id: driver.id, employeeId: driver.employeeId, email: driver.email, name: driver.name, phone: driver.phone },
       accessToken: generateAccessToken(payload),
@@ -105,8 +106,13 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
       res.status(401).json({ error: 'Account is no longer active' });
       return;
     }
+    // Issued before a password reset: that session is over.
+    if (!tokenIsCurrent(payload, account)) {
+      res.status(401).json({ error: 'Session ended. Please sign in again.' });
+      return;
+    }
 
-    const newPayload = { id: payload.id, email: payload.email, type: payload.type };
+    const newPayload = { id: payload.id, email: payload.email, type: payload.type, ver: account.tokenVersion ?? 0 };
     res.json({
       accessToken: generateAccessToken(newPayload),
       refreshToken: generateRefreshToken(newPayload),
@@ -210,6 +216,12 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
       res.status(400).json({ error: 'Invalid or expired reset token' });
       return;
     }
+    // Claim the token first, atomically: two requests at once can't both use it.
+    const [claimed] = await PasswordResetToken.update({ usedAt: new Date() }, { where: { id: resetRecord.id, usedAt: null } });
+    if (!claimed) {
+      res.status(400).json({ error: 'Invalid or expired reset token' });
+      return;
+    }
 
     if (resetRecord.accountType === 'driver') {
       const driver = await Driver.findOne({ where: { email: resetRecord.email } });
@@ -218,7 +230,8 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
         return;
       }
       driver.passwordHash = password; // beforeUpdate hook will hash it
-      await driver.save();
+      await driver.save(); // the model bumps tokenVersion, signing out every device
+      req.app.get('io')?.of('/driver').in(driverRoom(driver.id)).disconnectSockets(true);
     } else {
       const user = await User.findOne({ where: { email: resetRecord.email } });
       if (!user) {
@@ -226,12 +239,10 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
         return;
       }
       user.passwordHash = password; // beforeUpdate hook will hash it
-      await user.save();
+      await user.save(); // the model bumps tokenVersion, signing out every device
+      disconnectUserSockets(req.app.get('io'), user.id);
     }
 
-    // Mark token as used
-    resetRecord.usedAt = new Date();
-    await resetRecord.save();
 
     res.json({ message: 'Password has been reset successfully' });
   } catch (error) {

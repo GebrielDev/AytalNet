@@ -1,0 +1,46 @@
+{
+  "summary": "Round 23 security fixes tested end to end and all pass. Backend: socket_round23_reset_signout.cjs ran the full flow for a driver (sarah) and a dashboard user (dispatcher). Forgot-password, then reset with the token from the dev log, gives 200. The live socket that was open before the reset is disconnected by the server ('io server disconnect') on both '/driver' and '/'. The old access token gets 401 on /auth/me, the old refresh token gets 401 on /auth/refresh, and the old access token can no longer open a new socket. Reusing a reset token gives 400. Logging in with the old password gives 401; the new password logs in, /me, refresh and a new socket all work. Both passwords were then restored and verified. test_round23_security.py passes 20/20. Covered there: alg none, HS512/HS384 signed with the real secrets, a tampered payload, a wrong ver, and access and refresh tokens swapped are all rejected with 401. On all 4 endpoints the 11th try for the same IP+email gets 429 with Retry-After <= 900 and the 'Too many attempts. Please wait N minutes' message, and a spoofed X-Forwarded-For does not reset the counter. Email case is folded, and another account still logs in. The 51st login across emails from one IP gets 429, and driver-login is a separate bucket. A normal login under the limit works. CSV/XLSX export with driver 4 temporarily renamed to =HYPERLINK(\"..\",\"x, y\"): CSV shows the name as a quoted '= text cell with inner quotes doubled; XLSX has no <f> formula cells and the cell text is '=HYPERLINK...; dispatcher 200, driver 403. Name restored. Driver app (390x844): login stores accessToken/refreshToken in AsyncStorage (localStorage on web), Home shows, reload keeps the session, and logout clears all keys and stays on Login after reload. After a reset done elsewhere (background script), the app went back to Login on its own on the next background request and the keys were cleared. Dashboard: login, navigation across Drivers/Trips/Reports/Vehicles/Corrections, silent refresh after a corrupted access token, and logout clearing the tokens all work. The 429 message shows on the dashboard login form. All 7 test_credentials accounts log in at the end. Michael's trip 6 is still in_progress. auth_rate_limits cleared.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/users/:id, PUT /api/drivers/:id (password field)", "issue": "When an admin sets a new password here, tokenVersion is not bumped and sockets are not disconnected, so the old sessions keep working (the refresh token for up to 7 days). Only the reset flow signs out other devices. userController.ts:99-102, driverController.ts:98"},
+      {"endpoint": "POST /api/auth/reset-password", "issue": "Not atomic. The token is marked used only after the password is saved (authController.ts:214-245), so two requests sent at the same time with the same token can both succeed. Claim the token first with UPDATE ... SET used_at=now() WHERE id=? AND used_at IS NULL, and check the affected row count."},
+      {"endpoint": "auth rate limit (rateLimit.ts)", "issue": "The 50-per-IP bucket counts successful logins too. Drivers on one depot NAT/Wi-Fi at shift start could lock everyone out of driver-login for up to 15 minutes. Consider counting only failures, or a higher per-IP limit for driver-login. The fixed window also allows a burst of 2x at the window edge (minor)."},
+      {"endpoint": "GET /api/drivers/:id (and list)", "issue": "The response includes the internal tokenVersion field. Exclude it the same way passwordHash is excluded."},
+      {"endpoint": "GET /api/reports/export?format=xlsx", "issue": "Cosmetic: XLSX string cells never run as formulas, but the ' prefix is written into the cell text, so it shows as a visible apostrophe in Excel. Either drop the prefix for XLSX, or use the cell quotePrefix style. CSV is correct."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Driver LoginScreen (web preview only)", "issue": "Login errors use Alert.alert (LoginScreen.tsx:24), which does nothing on react-native-web, so wrong-password and 429 messages are not shown in the web preview. Native builds are fine.", "testID": "login-submit-button", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/regression/test_round23_security.py",
+    "/app/test_reports/regression/socket_round23_reset_signout.cjs",
+    "/app/test_reports/regression/reset_elsewhere_round23.cjs",
+    "/app/test_reports/pytest/round23.xml"
+  ],
+  "action_items": [
+    "MEDIUM: Bump tokenVersion and disconnect sockets (disconnectUserSockets / the driver room) when an admin changes a password via PUT /users/:id or PUT /drivers/:id.",
+    "LOW: Make the reset token single-use atomically (conditional UPDATE before changing the password).",
+    "LOW: Exclude tokenVersion from driver API responses.",
+    "LOW: Review the per-IP limit for driver-login (count failures only, or raise it) so drivers behind a shared depot NAT are not blocked.",
+    "LOW: XLSX export: skip the ' prefix, or set the quotePrefix style, so no apostrophe shows in the cell.",
+    "LOW: tokenStorage.read (native): wrap the SecureStore calls in try/catch. A keystore error currently throws out of AuthContext.checkAuth's catch block (line 70 calls getAccess again)."
+  ],
+  "critical_code_review_comments": [
+    "auth.ts/socket.ts pin algorithms to HS256 and check tokenVersion on REST, refresh and both socket namespaces.",
+    "rateLimit.ts fails open on DB errors, which is reasonable. trust proxy=1 worked in the preview: the XFF spoof did not bypass the limit.",
+    "driver-app api.ts:6 still has a hardcoded fallback production URL (pre-existing)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (20/20 pytest + 2/2 reset/socket flows)", "frontend": "100% of tested flows"},
+  "seed_data_creation": "None. Driver 4's name was temporarily changed and then restored to 'Sarah Johnson'. The sarah, dispatcher and maria passwords went through reset and were restored to their test_credentials values; their tokenVersion was bumped. auth_rate_limits cleared at the end.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Reset tokens are stored hashed. Read them from /var/log/supervisor/fleet-test-api.out.log ('Development reset link for <email>'). The dashboard has no data-testids; use input[type=email], button[type=submit] and [title=Logout]. In the driver app, set localStorage 'privacyNoticeSeen:v1' first to skip the privacy sheet. Clear auth_rate_limits between batches."
+}

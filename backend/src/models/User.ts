@@ -11,11 +11,13 @@ interface UserAttributes {
   role: 'admin' | 'dispatcher';
   // Whether this user receives late trip alert emails. Admins choose.
   lateTripAlerts?: boolean;
+  // Bumped on password reset: every token issued before it stops working.
+  tokenVersion?: number;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'createdAt' | 'updatedAt'> {}
+interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'tokenVersion' | 'createdAt' | 'updatedAt'> {}
 
 class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
   public id!: number;
@@ -24,6 +26,7 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
   public name!: string;
   public role!: 'admin' | 'dispatcher';
   public lateTripAlerts!: boolean;
+  public tokenVersion!: number;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 
@@ -63,6 +66,7 @@ User.init(
       allowNull: false,
       defaultValue: 'dispatcher',
     },
+    tokenVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: 'token_version' },
     lateTripAlerts: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
@@ -81,6 +85,8 @@ User.init(
       beforeUpdate: async (user) => {
         if (user.changed('passwordHash')) {
           user.passwordHash = await User.hashPassword(user.passwordHash);
+          // Any new password (reset or set by an admin) signs out every old session.
+          user.tokenVersion = (user.tokenVersion ?? 0) + 1;
         }
       },
     },

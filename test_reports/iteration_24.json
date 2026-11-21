@@ -1,0 +1,37 @@
+{
+  "summary": "Retest of the iteration_23 follow-up items. All of them pass. (1) Admin PUT /users/:id {password} for the dispatcher and PUT /drivers/:id {password} for maria both end old sessions: the old access token gets 401 on /auth/me (and on /drivers/my-vehicle for the driver), the old refresh token gets 401 on /auth/refresh, and the old password gets 401. The new password works. A name-only PUT keeps the session. Both passwords were restored. (2) Atomic reset: 5 concurrent POST /auth/reset-password with the same token, 3 rounds each for james (driver) and the dispatcher (user). Every round gave exactly one 200 and four 400s. (3) tokenVersion and passwordHash are absent from /drivers, /drivers/1, /drivers/4, stops-board, odometer-corrections, /trips, /trips/active, /trips/:id, /reports/trips, /vehicles, /users, /auth/me, the driver login response and the driver endpoints, and from the PUT responses. (4) Rate limit: 60 sequential successful driver-logins across 5 accounts all gave 200. So did 60 successful dashboard logins and 60 concurrent driver-logins (20 in parallel). 11 failures on one email: the 11th is 429. After 10 failures, even the correct password gets 429 on that IP+email. 51 failures across emails: the 51st is 429, and interleaving successful logins does not reset the per-IP failure count. (5) XLSX with driver 4 named =HYPERLINK(...): no <f> cells, the text is stored as-is with no leading apostrophe. CSV has the quoted '= cell with inner quotes doubled. Name restored to 'Sarah Johnson'. (6) Driver app login (390x844 web): an empty submit, a wrong password ('Invalid credentials or inactive account') and a 429 ('Too many attempts. Please wait 3 minutes and try again.') all show inline in testID login-error. The correct login reaches Home and stores the tokens. (7) Regression test_round23_security.py: 20/20 pass. New test_round24_followups.py: 13/13 pass. On the first run, one test hit a transient ConnectTimeout to the preview host; it passed on rerun. All 7 test_credentials accounts log in at the end. Michael's trip 6 is still in_progress. auth_rate_limits cleared.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/users/:id, PUT /api/drivers/:id (password)", "issue": "tokenVersion is now bumped (REST and refresh revoked: verified). Live sockets that are already open are not disconnected, unlike the reset flow (authController.ts:234/243). They stay connected until the access-token expiry timer in socket.ts closes them. userController.ts:99-104, driverController.ts:92-99"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/regression/test_round24_followups.py",
+    "/app/test_reports/regression/r24_ratelimit_probe.py",
+    "/app/test_reports/regression/test_round23_security.py",
+    "/app/test_reports/pytest/round24.xml",
+    "/app/test_reports/pytest/round24_regression.xml"
+  ],
+  "action_items": [
+    "LOW: When an admin changes a password via PUT /users/:id or PUT /drivers/:id, also call disconnectUserSockets / io.of('/driver').in(driverRoom(id)).disconnectSockets(true), the same way the reset flow does.",
+    "LOW: tokenStorage.ts (native): the legacy migration SecureStore.setItemAsync (line 22) and the deleteItemAsync calls in clear() (line 41) are not wrapped in try/catch. A keystore error there would still throw."
+  ],
+  "critical_code_review_comments": [
+    "User/Driver beforeUpdate hooks bump tokenVersion whenever passwordHash changes. This covers both reset and admin edit.",
+    "resetPassword claims the token with a conditional UPDATE (usedAt null) before changing the password. Verified race-safe.",
+    "rateLimit.ts takes the hit back on res 'finish' only for status < 400, so only failures add up. The 429 responses themselves also count as hits, which is acceptable."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (13/13 new + 20/20 regression + probe)", "frontend": "100% (login error/429/success flows)"},
+  "seed_data_creation": "None. The dispatcher and maria passwords were changed temporarily and restored. james and the dispatcher went through reset to the same passwords. Driver 4's name was changed and restored. tokenVersion was bumped for these accounts. auth_rate_limits cleared.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: EXPO_PUBLIC_API_URL=<preview>/api pytest test_reports/regression/test_round24_followups.py. Reset tokens are read from /var/log/supervisor/fleet-test-api.out.log. Driver app: set localStorage 'privacyNoticeSeen:v1' first. Michael is driver 5, and his in-progress trip is id 6."
+}

@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import { Server, Socket } from 'socket.io';
 import { authConfig } from './config/auth';
 import { User, Driver } from './models';
+import { tokenIsCurrent } from './middleware/auth';
 
 /**
  * Everything that governs the dashboard socket namespace lives here rather than
@@ -52,10 +53,11 @@ export const authenticateDashboardSocket = async (
     return;
   }
   try {
-    const decoded = jwt.verify(token, authConfig.jwtSecret) as {
+    const decoded = jwt.verify(token, authConfig.jwtSecret, { algorithms: ['HS256'] }) as {
       id: number;
       type?: string;
       exp?: number;
+      ver?: number;
     };
     if (decoded.type !== 'user') {
       next(new Error('Dashboard access is limited to dispatchers and administrators'));
@@ -64,7 +66,8 @@ export const authenticateDashboardSocket = async (
     // Matches authenticateToken: the signed claims are not enough on their own.
     // A dispatcher deleted through deleteUser still holds a valid token until it
     // expires, and without this would keep receiving the feed for up to an hour.
-    if (!(await User.findByPk(decoded.id))) {
+    const user = await User.findByPk(decoded.id);
+    if (!user || !tokenIsCurrent(decoded, user)) {
       next(new Error('User not found'));
       return;
     }
@@ -136,13 +139,13 @@ export const authenticateDriverSocket = async (socket: Socket, next: (err?: Erro
     return;
   }
   try {
-    const decoded = jwt.verify(token, authConfig.jwtSecret) as { id: number; type?: string; exp?: number };
+    const decoded = jwt.verify(token, authConfig.jwtSecret, { algorithms: ['HS256'] }) as { id: number; type?: string; exp?: number; ver?: number };
     if (decoded.type !== 'driver') {
       next(new Error('Driver access only'));
       return;
     }
     const driver = await Driver.findByPk(decoded.id);
-    if (!driver || driver.status !== 'active') {
+    if (!driver || driver.status !== 'active' || !tokenIsCurrent(decoded, driver)) {
       next(new Error('Driver not found'));
       return;
     }

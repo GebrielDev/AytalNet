@@ -193,7 +193,7 @@ export const getTripById = async (req: Request, res: Response): Promise<void> =>
   try {
     const trip = await Trip.findByPk(req.params.id, {
       include: [
-        { model: Driver, as: 'driver', attributes: { exclude: ['passwordHash'] } },
+        { model: Driver, as: 'driver', attributes: { exclude: ['passwordHash', 'tokenVersion'] } },
         { model: Vehicle, as: 'vehicle' },
         { model: TripPhoto, as: 'photos' },
       ],

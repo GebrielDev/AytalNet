@@ -8,20 +8,26 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  // Shown on screen too: Alert does nothing in the web preview.
+  const [error, setError] = useState('');
   const { login } = useAuth();
   const navigation = useNavigation<any>();
 
   const handleLogin = async () => {
     if (!email || !password) {
+      setError('Please enter email and password');
       Alert.alert('Error', 'Please enter email and password');
       return;
     }
 
     setLoading(true);
+    setError('');
     try {
       await login(email, password);
-    } catch (error: any) {
-      Alert.alert('Login Failed', error.response?.data?.error || 'Invalid credentials');
+    } catch (err: any) {
+      const message = err.response?.data?.error || (err.response ? 'Invalid credentials' : 'No connection. Check your signal and try again.');
+      setError(message);
+      Alert.alert('Login Failed', message);
     } finally {
       setLoading(false);
     }
@@ -65,6 +71,7 @@ export default function LoginScreen() {
         <TouchableOpacity style={styles.forgotButton} onPress={() => navigation.navigate('ForgotPassword')}>
           <Text style={styles.forgotText}>Forgot your password?</Text>
         </TouchableOpacity>
+        {error ? <Text style={styles.errorText} testID="login-error">{error}</Text> : null}
         <HelpLinks color="rgba(255,255,255,0.75)" />
       </View>
     </View>
@@ -83,4 +90,5 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '700', letterSpacing: 0.5 },
   forgotButton: { alignItems: 'center', marginTop: 18 },
   forgotText: { color: '#60a5fa', fontSize: 14, fontWeight: '500' },
+  errorText: { color: '#fecaca', fontSize: 15, fontWeight: '600', textAlign: 'center', marginTop: 16 },
 });

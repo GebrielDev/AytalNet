@@ -91,6 +91,9 @@ export const connectDatabase = async (): Promise<void> => {
 
     for (const statement of [
       'ALTER TABLE users ADD COLUMN IF NOT EXISTS late_trip_alerts BOOLEAN NOT NULL DEFAULT TRUE;',
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;',
+      'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;',
+      'CREATE TABLE IF NOT EXISTS auth_rate_limits (key TEXT PRIMARY KEY, window_start TIMESTAMPTZ NOT NULL, hits INTEGER NOT NULL DEFAULT 0);',
       'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS destination_address VARCHAR(500);',
       'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS destination_note VARCHAR(500);',
       'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS destination_updated_at TIMESTAMP WITH TIME ZONE;',

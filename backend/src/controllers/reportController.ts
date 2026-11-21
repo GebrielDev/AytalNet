@@ -136,15 +136,25 @@ export const exportReport = async (req: Request, res: Response): Promise<void> =
       'Total Mileage': trip.totalMileage || 'N/A',
     }));
 
+    // Text that starts with = + - @ (or tab/CR) is prefixed with ' so a
+    // spreadsheet shows it instead of running it as a formula.
+    const safe = (v: unknown) => (typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${v}` : v);
+    const safeData = data.map((row) => Object.fromEntries(Object.entries(row).map(([k, v]) => [k, safe(v)])));
+    const csvCell = (v: unknown) => {
+      const text = v instanceof Date ? v.toISOString() : String(v ?? '');
+      return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+
     if (format === 'csv') {
-      const headers = Object.keys(data[0] || {}).join(',');
-      const rows = data.map((row) => Object.values(row).join(','));
+      const headers = Object.keys(safeData[0] || {}).map(csvCell).join(',');
+      const rows = safeData.map((row) => Object.values(row).map(csvCell).join(','));
       const csv = [headers, ...rows].join('\n');
 
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename=trips-report.csv');
       res.send(csv);
     } else {
+      // XLSX cells are written as plain text (never formulas), so no prefix is needed.
       const worksheet = XLSX.utils.json_to_sheet(data);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Trips');

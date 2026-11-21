@@ -18,6 +18,8 @@ interface DriverAttributes {
   // without a date there is nothing to count seven years from. Set by the hook
   // below whenever status moves to inactive, cleared on reinstatement.
   deactivatedAt?: Date | null;
+  // Bumped on password reset: every token issued before it stops working.
+  tokenVersion?: number;
   // Where the dispatcher wants this driver to go next. Shown in the driver
   // app with a Navigate button; cleared by the dispatcher.
   destinationAddress?: string | null;
@@ -35,7 +37,7 @@ interface DriverAttributes {
   updatedAt?: Date;
 }
 
-interface DriverCreationAttributes extends Optional<DriverAttributes, 'id' | 'status' | 'assignedVehicleId' | 'deactivatedAt' | 'destinationAddress' | 'destinationNote' | 'destinationUpdatedAt' | 'destinationLatitude' | 'destinationLongitude' | 'lastLatitude' | 'lastLongitude' | 'lastLocatedAt' | 'createdAt' | 'updatedAt'> {}
+interface DriverCreationAttributes extends Optional<DriverAttributes, 'id' | 'status' | 'assignedVehicleId' | 'deactivatedAt' | 'tokenVersion' | 'destinationAddress' | 'destinationNote' | 'destinationUpdatedAt' | 'destinationLatitude' | 'destinationLongitude' | 'lastLatitude' | 'lastLongitude' | 'lastLocatedAt' | 'createdAt' | 'updatedAt'> {}
 
 class Driver extends Model<DriverAttributes, DriverCreationAttributes> implements DriverAttributes {
   public id!: number;
@@ -48,6 +50,7 @@ class Driver extends Model<DriverAttributes, DriverCreationAttributes> implement
   public assignedVehicleId!: number | null;
   public status!: 'active' | 'inactive';
   public deactivatedAt!: Date | null;
+  public tokenVersion!: number;
   public destinationAddress?: string | null;
   public destinationNote?: string | null;
   public destinationUpdatedAt?: Date | null;
@@ -120,6 +123,7 @@ Driver.init(
       allowNull: false,
       defaultValue: 'active',
     },
+    tokenVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: 'token_version' },
     deactivatedAt: {
       type: DataTypes.DATE,
       allowNull: true,
@@ -166,6 +170,8 @@ Driver.init(
       beforeUpdate: async (driver) => {
         if (driver.changed('passwordHash')) {
           driver.passwordHash = await Driver.hashPassword(driver.passwordHash);
+          // Any new password (reset or set by an admin) signs out every old session.
+          driver.tokenVersion = (driver.tokenVersion ?? 0) + 1;
         }
 
         // The seven years the privacy policy promises are counted from here.

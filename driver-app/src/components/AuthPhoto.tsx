@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Image, View, StyleSheet, Platform, type ImageStyle, type StyleProp } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { tokenStorage } from '../services/tokenStorage';
 
 /**
  * Trip photos are private: the server only hands them out with the driver's
@@ -15,7 +15,7 @@ export default function AuthPhoto({ uri, style, testID }: { uri: string; style: 
     let cancelled = false;
     (async () => {
       if (uri.startsWith('data:')) return setSource({ uri });
-      const token = await AsyncStorage.getItem('accessToken');
+      const token = await tokenStorage.getAccess();
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
       if (Platform.OS !== 'web') return setSource({ uri, headers });
       try {

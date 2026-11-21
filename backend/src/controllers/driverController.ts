@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { driverRoom } from '../socket';
 import { Driver, Trip, Vehicle, DriverStop, OdometerCorrection } from '../models';
 import { Op } from 'sequelize';
 import { geocodeAddress } from '../services/geo';
@@ -23,7 +24,7 @@ export const getAllDrivers = async (req: Request, res: Response): Promise<void> 
 
     const drivers = await Driver.findAll({
       where,
-      attributes: { exclude: ['passwordHash'] },
+      attributes: { exclude: ['passwordHash', 'tokenVersion'] },
       include: [{ model: Vehicle, as: 'assignedVehicle', attributes: ['id', 'plateNumber', 'make', 'model'] }],
       order: [['createdAt', 'DESC']],
     });
@@ -35,7 +36,7 @@ export const getAllDrivers = async (req: Request, res: Response): Promise<void> 
 
 export const getDriverById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const driver = await Driver.findByPk(req.params.id, { attributes: { exclude: ['passwordHash'] } });
+    const driver = await Driver.findByPk(req.params.id, { attributes: { exclude: ['passwordHash', 'tokenVersion'] } });
     if (!driver) {
       res.status(404).json({ error: 'Driver not found' });
       return;
@@ -97,6 +98,8 @@ export const updateDriver = async (req: Request, res: Response): Promise<void> =
       ...(status && { status }),
       ...(password && { passwordHash: password }),
     });
+    // New password: close the driver's live connection too.
+    if (password) req.app.get('io')?.of('/driver').in(driverRoom(driver.id)).disconnectSockets(true);
 
     res.json({ id: driver.id, employeeId: driver.employeeId, name: driver.name, email: driver.email, phone: driver.phone, status: driver.status });
   } catch (error) {
@@ -155,7 +158,7 @@ export const assignVehicle = async (req: Request, res: Response): Promise<void> 
     await driver.update({ assignedVehicleId: vehicleId || null });
 
     const updated = await Driver.findByPk(driver.id, {
-      attributes: { exclude: ['passwordHash'] },
+      attributes: { exclude: ['passwordHash', 'tokenVersion'] },
       include: [{ model: Vehicle, as: 'assignedVehicle', attributes: ['id', 'plateNumber', 'make', 'model'] }],
     });
 

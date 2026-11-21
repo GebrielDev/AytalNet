@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { tokenStorage } from './tokenStorage';
 import { io, Socket } from 'socket.io-client';
 import { getStops, setStopsLocal, syncNow } from './offlineTrips';
 import { fetchNotes, setNotesLocal } from './notes';
@@ -35,7 +35,7 @@ export const startLiveUpdates = (driverId: number | null): (() => void) => {
     transports: ['websocket'],
     // Read on every (re)connect, so a renewed token is picked up.
     auth: (cb) => {
-      AsyncStorage.getItem('accessToken').then((token) => cb({ token }));
+      tokenStorage.getAccess().then((token) => cb({ token }));
     },
   });
 

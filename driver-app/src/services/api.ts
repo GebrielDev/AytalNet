@@ -1,6 +1,6 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createTokenRefresher } from './tokenRefresh';
+import { tokenStorage } from './tokenStorage';
 
 // Production API URL - override via EXPO_PUBLIC_API_URL env var at build time
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://api.startechsolutions.us/api';
@@ -11,7 +11,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
-  const token = await AsyncStorage.getItem('accessToken');
+  const token = await tokenStorage.getAccess();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -51,12 +51,12 @@ export const setOnSessionEnded = (handler: SessionEndedHandler | null): void => 
 
 const endSession = async (): Promise<void> => {
   invalidateSession();
-  await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
+  await tokenStorage.clear();
   onSessionEnded?.();
 };
 
 const refresher = createTokenRefresher({
-  getRefreshToken: () => AsyncStorage.getItem('refreshToken'),
+  getRefreshToken: () => tokenStorage.getRefresh(),
   // A bare axios call, not `api`: going through the instance would attach the
   // dead access token and recurse through this very interceptor on its 401.
   requestNewTokens: async (refreshToken) => {
@@ -64,10 +64,7 @@ const refresher = createTokenRefresher({
     return { accessToken: data.accessToken, refreshToken: data.refreshToken };
   },
   saveTokens: async ({ accessToken, refreshToken }) => {
-    await AsyncStorage.multiSet([
-      ['accessToken', accessToken],
-      ['refreshToken', refreshToken],
-    ]);
+    await tokenStorage.save(accessToken, refreshToken);
   },
   clearTokens: endSession,
   sessionGeneration: () => sessionGeneration,

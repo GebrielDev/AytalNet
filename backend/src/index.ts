@@ -30,6 +30,10 @@ configureDriverSocket(io);
 // Make io available in routes
 app.set('io', io);
 
+// Real client IP (for login attempt limits) from the proxy in front: Railway = 1 hop.
+const proxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 1);
+app.set('trust proxy', Number.isInteger(proxyHops) && proxyHops >= 0 && proxyHops <= 5 ? proxyHops : 1);
+
 // Middleware
 app.use(cors({
   origin(origin, callback) {

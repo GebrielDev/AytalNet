@@ -101,7 +101,10 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
       user.passwordHash = password;
     }
 
+    const passwordChanged = !!password;
     await user.save();
+    // New password: close this user's live dashboard connections too.
+    if (passwordChanged) disconnectUserSockets(req.app.get('io'), user.id);
 
     res.json({
       id: user.id,
