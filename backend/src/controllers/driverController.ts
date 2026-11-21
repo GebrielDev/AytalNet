@@ -3,7 +3,7 @@ import { Driver, Trip, Vehicle, DriverStop } from '../models';
 import { Op } from 'sequelize';
 import { geocodeAddress } from '../services/geo';
 import sequelize from '../config/database';
-import { listStops, syncDriverStops, markStopArrived, stopView } from '../services/stops';
+import { listStops, syncDriverStops, markStopArrived, stopView, flagOdometers } from '../services/stops';
 import { distanceMeters, arrivalRadiusMeters } from '../services/geo';
 import { storePhoto } from './tripController';
 
@@ -444,12 +444,13 @@ export const getStopsBoard = async (_req: Request, res: Response): Promise<void>
       Trip.findAll({ where: { status: 'in_progress' }, attributes: ['id', 'driverId', 'startTime'] }),
     ]);
     const lastSeen = await lastKnownLocations();
-    const byDriver = new Map<number, ReturnType<typeof stopView>[]>();
+    const raw = new Map<number, ReturnType<typeof stopView>[]>();
     for (const stop of stops) {
-      const list = byDriver.get(stop.driverId) ?? [];
+      const list = raw.get(stop.driverId) ?? [];
       list.push(stopView(stop));
-      byDriver.set(stop.driverId, list);
+      raw.set(stop.driverId, list);
     }
+    const byDriver = new Map(await Promise.all([...raw].map(async ([id, list]) => [id, await flagOdometers(list)] as const)));
     const board = (drivers as any[]).map((d) => {
       const list = byDriver.get(d.id) ?? [];
       const trip = active.find((t) => t.driverId === d.id);
@@ -462,6 +463,7 @@ export const getStopsBoard = async (_req: Request, res: Response): Promise<void>
         stops: list,
         lastLocation: lastSeen.get(d.id) ?? null,
         done: list.filter((s) => s.arrivedAt).length,
+        odometerFlags: list.filter((s) => s.odometerFlag).length,
         total: list.length,
       };
     });

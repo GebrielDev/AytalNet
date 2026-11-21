@@ -13,6 +13,7 @@ interface Stop {
   arrivedDistanceMeters?: number | null;
   arrivedOdometer?: number | null;
   arrivedPhotoUrl?: string | null;
+  odometerFlag?: string | null;
 }
 
 type Draft = AddressPick & { key: string; note: string; id?: number };
@@ -104,7 +105,8 @@ export default function StopsModal({ driver, onClose, onSaved }: { driver: { id:
                   Arrived {s.arrivedAt ? new Date(s.arrivedAt).toLocaleString() : ''}
                   {distanceText(s.arrivedDistanceMeters)}
                 </span>
-                {s.arrivedOdometer != null && <span className="block text-xs text-gray-700" data-testid={`stops-done-odometer-${i}`}>Odometer {s.arrivedOdometer} mi</span>}
+                {s.arrivedOdometer != null && <span className={`block text-xs ${s.odometerFlag ? 'text-red-700 font-semibold' : 'text-gray-700'}`} data-testid={`stops-done-odometer-${i}`}>Odometer {s.arrivedOdometer} mi</span>}
+                {s.odometerFlag && <span className="block text-xs font-semibold text-red-700" data-testid={`stops-done-flag-${i}`}>⚠ {s.odometerFlag}</span>}
                 {s.arrivedPhotoUrl && (
                   <a href="#" onClick={(e) => e.preventDefault()} className="block mt-1">
                     <AuthImage src={s.arrivedPhotoUrl} alt="Odometer at stop" className="w-24 h-24 object-cover rounded-lg border border-gray-200" testId={`stops-done-photo-${i}`} />

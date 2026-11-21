@@ -1,0 +1,33 @@
+{
+  "summary": "Odometer Flags feature tested end-to-end. Backend: 6/6 pytest pass (arrive response, GET /drivers/:id/stops, /drivers/my-stops, stops-board odometerFlags count, post-trip-end 'Higher than trip end', unauth 401/403). All 4 rules produce the exact strings; exactly-300 mi jump is not flagged; stops with no reading get null. Dashboard: board badge '⚠ N odometer reading(s) to check' (singular/plural right), red highlighted rows with reason, StopsModal flags (opened from both the board and the Drivers page), readable in light and dark mode, unflagged rows unchanged. Regression: board refreshes live on arrival through the socket, including the new flag and badge. One logic bug: a flagged reading becomes the baseline for the next stop, so a correct reading after a typo gets flagged as a false jump.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "services/stops.ts flagOdometers", "issue": "A wrong reading is still used as the baseline for the next stop. Reproduced: trip start 20480, stop1 20490 (ok), stop2 20100 (flagged 'Lower than trip start'), stop3 20495, which is a correct reading, got flagged '395 mi since stop 2 — check'. A high typo does the same thing: every correct reading after it gets 'Lower than stop N'. Fix: update `prev` only when the reading was not flagged (or always compare against the last unflagged reading)."},
+      {"endpoint": "GET /api/drivers/stops-board", "issue": "flagOdometers runs one Trip.findAll per driver (N+1 queries). Collect all tripIds first and run a single query. Low priority."},
+      {"endpoint": "services/stops.ts flagOdometers", "issue": "Stops with tripId null (arrived with no trip in progress) are compared with each other because null === null. Probably fine, but the comparison may cross different days."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/regression/test_round20_odometer_flags.py", "/app/test_reports/pytest/round20.xml"],
+  "action_items": [
+    "In flagOdometers, keep the last unflagged reading as the baseline (don't set prev from a flagged reading), so a single typo doesn't flag the correct readings after it",
+    "Optional: batch the Trip lookup for the stops board into one query"
+  ],
+  "critical_code_review_comments": [
+    "Precedence is start < previous < end > jump. A reading that is both above trip end and a big jump only shows 'Higher than trip end'. That is acceptable.",
+    "The late-proof path (stop already arrived, odometer added later) returns flags through listStops and emits stops:changed. Verified."
+  ],
+  "updated_files": ["/app/test_reports/regression/test_round20_odometer_flags.py (new)"],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100%"},
+  "seed_data_creation": "TEST_ trips 38 (ended, then deleted by id with its photos) and 39 (cancelled) for James, plus TEST_r20/TEST_r17 stops (cleared). Vehicle 3 current_odometer restored to 20060. Michael's trip 6 not touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with KEEP=1 to keep the data for UI checks: KEEP=1 pytest test_round20_odometer_flags.py. Ending the trip sets vehicle 3's odometer, so restore it afterwards (the fixture does this when KEEP isn't set). Dashboard login: input[type=email]/[type=password] + submit, then /api/dashboard/stops. Live arrivals can be posted from the browser with page.request.post(multipart=...) using James's token.",
+  "rca_of_issue": "False jump flag: flagOdometers sets prev = {reading,...} for every stop with a reading, flagged or not (stops.ts:58), so the next stop is measured from the bad reading."
+}

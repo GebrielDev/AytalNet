@@ -1,5 +1,6 @@
 import { Server } from 'socket.io';
-import { Driver, DriverStop } from '../models';
+import { Op } from 'sequelize';
+import { Driver, DriverStop, Trip } from '../models';
 import { driverRoom } from '../socket';
 import { distanceMeters, arrivalRadiusMeters } from './geo';
 
@@ -24,8 +25,45 @@ export const stopView = (s: DriverStop) => ({
   arrivedPhotoUrl: s.arrivedPhotoUrl ?? null,
 });
 
+type StopView = ReturnType<typeof stopView>;
+
+/** Miles between two readings beyond which a stop reading is flagged as a likely typo. */
+const jumpMiles = () => Number(process.env.ODOMETER_JUMP_MILES) || 300;
+
+/**
+ * Marks stop readings that look wrong: lower than the trip start or an
+ * earlier stop, higher than the trip end, or an unlikely jump. `stops` are
+ * one driver's stops in order.
+ */
+export const flagOdometers = async (stops: StopView[]) => {
+  const tripIds = [...new Set(stops.map((s) => s.tripId).filter((id): id is number => id != null))];
+  const trips = tripIds.length
+    ? await Trip.findAll({ where: { id: { [Op.in]: tripIds } }, attributes: ['id', 'startOdometer', 'endOdometer'] })
+    : [];
+  const byId = new Map(trips.map((t) => [t.id, t]));
+  let prev: { reading: number; label: string; tripId: number | null } | null = null;
+  return stops.map((s) => {
+    if (s.arrivedOdometer == null) return { ...s, odometerFlag: null as string | null };
+    const reading = s.arrivedOdometer;
+    const trip = s.tripId != null ? byId.get(s.tripId) : undefined;
+    const start = trip?.startOdometer != null ? Number(trip.startOdometer) : null;
+    const end = trip?.endOdometer != null ? Number(trip.endOdometer) : null;
+    // Compare with the earlier stop only when it was on the same trip.
+    // Stops arrived with no trip open are not compared with each other.
+    const before = prev && s.tripId != null && prev.tripId === s.tripId ? prev : start != null ? { reading: start, label: 'trip start', tripId: s.tripId } : null;
+    let flag: string | null = null;
+    if (start != null && reading < start) flag = `Lower than trip start (${start})`;
+    else if (before && reading < before.reading) flag = `Lower than ${before.label} (${before.reading})`;
+    else if (end != null && reading > end) flag = `Higher than trip end (${end})`;
+    else if (before && reading - before.reading > jumpMiles()) flag = `${Math.round(reading - before.reading)} mi since ${before.label} — check`;
+    // Later stops are compared with the last good reading, not a typo.
+    if (!flag) prev = { reading, label: `stop ${s.position}`, tripId: s.tripId };
+    return { ...s, odometerFlag: flag };
+  });
+};
+
 export const listStops = async (driverId: number) =>
-  (await DriverStop.findAll({ where: { driverId }, order: [['position', 'ASC'], ['id', 'ASC']] })).map(stopView);
+  flagOdometers((await DriverStop.findAll({ where: { driverId }, order: [['position', 'ASC'], ['id', 'ASC']] })).map(stopView));
 
 /**
  * Copies the current stop onto the driver and pushes the updated list to the

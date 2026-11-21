@@ -16,6 +16,7 @@ interface BoardStop {
   arrivedDistanceMeters: number | null;
   arrivedOdometer?: number | null;
   arrivedPhotoUrl?: string | null;
+  odometerFlag?: string | null;
 }
 
 interface BoardRow {
@@ -27,6 +28,7 @@ interface BoardRow {
   stops: BoardStop[];
   lastLocation: MapRow['lastLocation'];
   done: number;
+  odometerFlags?: number;
   total: number;
 }
 
@@ -206,6 +208,11 @@ export default function StopsBoard() {
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
+                  {r.odometerFlags ? (
+                    <span data-testid={`stops-board-flags-${r.driverId}`} className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+                      ⚠ {r.odometerFlags} odometer {r.odometerFlags === 1 ? 'reading' : 'readings'} to check
+                    </span>
+                  ) : null}
                   {r.activeTrip ? (
                     <span data-testid={`stops-board-on-trip-${r.driverId}`} className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">On trip since {time(r.activeTrip.startTime)}</span>
                   ) : (
@@ -229,7 +236,7 @@ export default function StopsBoard() {
                   </div>
                   <ol className="mt-3 space-y-2">
                     {r.stops.map((s) => (
-                      <li key={s.id} className="flex gap-2 text-sm" data-testid={`stops-board-stop-${s.id}`}>
+                      <li key={s.id} className={`flex gap-2 text-sm ${s.odometerFlag ? 'bg-red-50 border border-red-200 rounded-lg p-1.5 -mx-1.5' : ''}`} data-testid={`stops-board-stop-${s.id}`}>
                         <span
                           className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
                             s.arrivedAt ? 'bg-green-100 text-green-700' : s.id === nextId ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'
@@ -242,7 +249,8 @@ export default function StopsBoard() {
                           {s.arrivedAt ? (
                             <span className="block text-xs text-green-700">
                               Arrived {time(s.arrivedAt)}{s.arrivedDistanceMeters != null ? ` · ${s.arrivedDistanceMeters} m` : ''}
-                              {s.arrivedOdometer != null ? <span className="text-gray-700" data-testid={`board-stop-odometer-${s.id}`}> · Odometer {s.arrivedOdometer} mi</span> : null}
+                              {s.arrivedOdometer != null ? <span className={s.odometerFlag ? 'text-red-700 font-semibold' : 'text-gray-700'} data-testid={`board-stop-odometer-${s.id}`}> · Odometer {s.arrivedOdometer} mi</span> : null}
+                              {s.odometerFlag ? <span className="block text-xs font-semibold text-red-700" data-testid={`board-stop-flag-${s.id}`}>⚠ {s.odometerFlag}</span> : null}
                               {s.arrivedPhotoUrl ? <AuthImage src={s.arrivedPhotoUrl} alt="Odometer at stop" className="mt-1 w-16 h-16 object-cover rounded-md border border-gray-200" testId={`board-stop-photo-${s.id}`} /> : null}
                             </span>
                           ) : s.id === nextId ? (
