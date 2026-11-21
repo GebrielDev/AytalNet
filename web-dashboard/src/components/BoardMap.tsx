@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Popup, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, CircleMarker, Marker, Polyline, Popup, Tooltip, useMap } from 'react-leaflet';
+import MapTiles from './MapTiles';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -75,10 +76,7 @@ export default function BoardMap({ rows, focusDriverId, onSelect }: { rows: MapR
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" data-testid="board-map">
       <MapContainer center={[33.45, -112.07]} zoom={10} style={{ height: 560, width: '100%' }} scrollWheelZoom>
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <MapTiles />
         <Fit points={points} focus={focus} />
         {items.map(({ r, next }) => (
           <div key={r.driverId}>

@@ -4,6 +4,7 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { useAuth } from '../context/AuthContext';
 import { useColors, useStyles, type Palette } from '../theme';
 import PendingTrips from '../components/PendingTrips';
+import HelpLinks from '../components/HelpLinks';
 import StopsCard from '../components/StopsCard';
 import { getActiveTrip, getAssignedVehicle, getStops, getRecentTrips, subscribeToStops, type Stop, loadQueue, subscribeToQueue, type TripHistory } from '../services/offlineTrips';
 
@@ -225,6 +226,7 @@ export default function HomeScreen() {
           );
         })}
       </View>
+      <HelpLinks color={c.textMuted} />
     </ScrollView>
   );
 }

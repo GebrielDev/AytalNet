@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 13 retested only the frontend. Dashboard at 1920x1080 and driver app at 390x844. Everything passed.\n\nDashboard dark map tiles:\n- The Stops board map (board-map) and the Coverage map (coverage-map) now use OSM tiles from tile.openstreetmap.org. No CARTO tiles remain and there is no 'API KEY REQUIRED' watermark. All tiles loaded: 12 of 12 on Stops and 21 of 21 on Coverage.\n- In dark mode the computed filter on .leaflet-tile-pane is 'invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9)'. The marker pane and overlay pane have no filter, so markers keep their colours: blue markers and route on Stops, orange offline markers on Coverage.\n- At zoom 10, streets, highway shields (I 44, US 60) and city labels are readable on the darkened map.\n- In light mode the tile pane has no filter and shows normal OSM tiles.\n- Pressing theme-toggle switches dark to light to dark without reloading the page (checked with a window flag). No page errors.\n\nDriver app crash screen:\n- App.tsx now has ErrorBoundary wrapping AuthProvider and NavigationContainer.\n- I forced a crash with a temporary throw in LoginScreen, triggered by typing TEST_CRASH. crash-screen appeared, with crash-retry (139x52) and crash-email (294x44, text 'Still stuck? Email support@startechsolutions.us').\n- Tapping crash-email did not crash the app. Tapping Try again remounted the Login screen.\n- The temporary change has been reverted (no TEST_CRASH left in the file).\n\nHelpLinks code check: openLink calls Linking.openURL(url).catch(() => Alert.alert('Need help?', 'Email us at support@...')). The crash email link and all three help links use it.\n\nRegression: Login shows the privacy, help and website links. Login as james@fleet.com reaches Home ('STS Driver App'), and the three links appear at the bottom of the screen. Privacy opens https://driverapp.startechsolutions.us/privacy and Website opens https://driverapp.startechsolutions.us/. No page errors.\n\nDeprecated packages: none found (no expo-av, expo-barcode-scanner or expo-background-fetch in package.json).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard maps (dark mode)", "issues": ["Cosmetic, low priority: the Leaflet zoom +/- controls stay white with a white border in dark mode. Usable, but they stand out against the darkened map."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_13.json"],
+  "action_items": ["Optional: add dark styles for .dark .leaflet-control-zoom a (background and colour) in index.css."],
+  "critical_code_review_comments": [
+    "HelpLinks.openLink only catches a rejected promise from Linking.openURL. That covers Android and iOS when no mail app is installed. On web, mailto never rejects, so the Alert will not show there, which is expected.",
+    "ErrorBoundary now sits outside AuthProvider, so 'Try again' also remounts AuthProvider, which re-reads the stored session. This is acceptable and was verified working."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100%"},
+  "seed_data_creation": "None. No trips were created. The temporary LoginScreen crash change was reverted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Dark map tiles are OSM with a CSS filter on .dark .leaflet-tile-pane (index.css line ~119). The theme is stored in localStorage 'theme'. To force a crash, add `if (email === 'TEST_CRASH') throw new Error('x')` before `return (` in LoginScreen (line 30), back up the file first and restore it afterwards. The other uncommitted git diff in LoginScreen.tsx (the HelpLinks import and usage) is E1's work. Do not revert it.",
+  "rca_of_issue": "Iteration 12 failure: CARTO basemaps now require an API key, so dark tiles showed a watermark. The fix was to use OSM tiles everywhere and darken them with a CSS filter limited to the tile pane. Verified fixed."
+}

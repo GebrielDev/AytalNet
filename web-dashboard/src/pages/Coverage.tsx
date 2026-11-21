@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import MapTiles from '../components/MapTiles';
 import 'leaflet/dist/leaflet.css';
 import { tripsApi } from '../services/api';
 
@@ -117,10 +118,7 @@ export default function Coverage() {
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" data-testid="coverage-map">
         <MapContainer center={[33.45, -112.07]} zoom={9} style={{ height: 520, width: '100%' }} scrollWheelZoom>
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          <MapTiles />
           <FitToPoints points={points} />
           {points.map((p) => (
             <CircleMarker

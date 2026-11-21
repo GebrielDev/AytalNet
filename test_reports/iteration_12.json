@@ -1,0 +1,34 @@
+{
+  "summary": "Round 12, frontend only. Driver app tested at 390x844 and dashboard at 1920x1080. PASS: Login shows Privacy Policy, Help and Website links (link-privacy, link-help, link-website). Each tap target is 44px tall (widths 119, 54 and 77). Contrast is 8.76 on the login card. Privacy opens https://driverapp.startechsolutions.us/privacy in a new tab and Website opens https://driverapp.startechsolutions.us/. On Home (james@fleet.com) the same links sit at the bottom of the scroll, with contrast 5.69 in light and 8.61 in dark. app.json camera and location strings match the request: NSCameraUsageDescription, NSLocationWhenInUseUsageDescription, the expo-image-picker cameraPermission and the expo-location plugin. ErrorBoundary was checked by forcing a temporary throw in LoginScreen, which has since been reverted. It shows 'Something went wrong', the safety note, 'Try again' (crash-retry, 139x52) and 'Still stuck? Email support@startechsolutions.us' in both light and dark. Try again remounts the Login screen. Map switching works: Stops board Map and Coverage swap between OSM tiles and the CARTO dark_all URL when theme-toggle is pressed, with no reload. Markers stay visible (6 on Stops, 3 on Coverage), attribution updates and there are no page errors. FAIL (CRITICAL): every CARTO dark_all tile is a grey placeholder watermarked 'API KEY REQUIRED · carto.com/basemaps/apikey'. CARTO has required an API key for basemaps.cartocdn.com since Sep 25 2026. curl returns the same watermark tile with or without a Referer header, so dark mode shows no streets or labels. Regression: driver login and Home work, and all 8 dashboard pages load with no errors. Deprecated packages detected: none checked in scope.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "web-dashboard MapTiles (dark mode)", "issue": "CARTO dark_all tiles without a ?key= return the 'API KEY REQUIRED' watermark tile (CARTO policy since Sep 2026). In dark mode, Stops board Map and Coverage show no streets or labels, only watermarks and markers. Reference: /app/web-dashboard/src/components/MapTiles.tsx:19", "testID": "board-map, coverage-map", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "ErrorBoundary placement", "issue": "The boundary sits inside AuthProvider and NavigationContainer, so a crash in those, or in the theme or navigation setup, still gives a blank app. Reference: /app/driver-app/App.tsx:49-55"}
+    ]
+  },
+  "test_report_links": [".screenshots/login_links.jpg", ".screenshots/home_links_light.jpg", ".screenshots/home_links_dark.jpg", ".screenshots/crash_light.jpg", ".screenshots/crash_dark.jpg", ".screenshots/coverage_dark.jpg"],
+  "action_items": [
+    "CRITICAL: Fix dark map tiles. Option A: get a free CARTO key (https://carto.com/basemaps/apikey), add it as an env var such as VITE_CARTO_KEY and use https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${import.meta.env.VITE_CARTO_KEY}, and allow-list the preview and production hosts. Option B (no key): keep the OSM TileLayer in dark mode and apply a CSS filter to the tile pane, e.g. html.dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9); }. Then rebuild the dashboard.",
+    "Move ErrorBoundary to the outermost position in App.tsx, wrapping AuthProvider and NavigationContainer.",
+    "HelpLinks and ErrorBoundary: add .catch() to Linking.openURL. mailto rejects on devices with no mail app, which is an unhandled promise rejection; on failure, show an Alert with the support email.",
+    "Add a testID to the ErrorBoundary support email link (e.g. crash-email)."
+  ],
+  "critical_code_review_comments": [
+    "MapTiles.tsx: the MutationObserver approach is good, and switching works without a reload. The only problem is the keyless CARTO URL.",
+    "ErrorBoundary.tsx: Appearance.getColorScheme() is read during render and is not subscribed, so the colours do not update if the scheme changes while the crash screen is showing. Minor.",
+    "ErrorBoundary retry only clears its own state. If the crash is deterministic on the current route, the error comes straight back. That is acceptable, but consider resetting navigation to Home on retry.",
+    "HelpLinks.tsx: Linking.openURL(...) is not awaited and not caught."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "86% (6/7 checks; the dark tile content fails)"},
+  "seed_data_creation": "None. No trips were created and Michael's trip was not touched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "To force an ErrorBoundary crash, temporarily add `if (email === 'TEST_CRASH') throw new Error('x')` before `return` in LoginScreen, type TEST_CRASH, then revert by restoring the backup copy. To check whether tiles are real or watermarked, curl https://a.basemaps.cartocdn.com/dark_all/10/193/409.png: a 2513-byte file (md5 df9307c7...) is the watermark tile. The dashboard theme is kept in localStorage 'theme'. Dashboard login uses input[type=email], input[type=password] and button[type=submit].",
+  "rca_of_issue": "The dark tiles fail because CARTO began enforcing API keys on basemaps.cartocdn.com on Sep 25 2026, and the MapTiles dark_all URL has no key parameter. Reproduce by toggling theme-toggle on /stops (Map on) or on /coverage. Fix with a CARTO key or with a CSS invert filter on the OSM tiles."
+}

@@ -13,8 +13,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "us.startechsolutions.driverapp",
       "infoPlist": {
-        "NSCameraUsageDescription": "This app uses the camera to take photos of odometer and selfie.",
-        "NSLocationWhenInUseUsageDescription": "This app uses your location to track trips.",
+        "NSCameraUsageDescription": "Photograph your odometer, plate and selfie for trip records.",
+        "NSLocationWhenInUseUsageDescription": "Records trip routes and confirms arrival at your stops.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -35,14 +35,14 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Allow STS Driver App to access your camera.",
+          "cameraPermission": "Photograph your odometer, plate and selfie for trip records.",
           "microphonePermission": false
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow STS Driver App to access your location."
+          "locationWhenInUsePermission": "Records trip routes and confirms arrival at your stops."
         }
       ],
       [

@@ -10,6 +10,7 @@ import StartTripScreen from './src/screens/StartTripScreen';
 import ActiveTripScreen from './src/screens/ActiveTripScreen';
 import EndTripScreen from './src/screens/EndTripScreen';
 import { useColors } from './src/theme';
+import ErrorBoundary from './src/components/ErrorBoundary';
 
 const Stack = createNativeStackNavigator();
 
@@ -45,11 +46,13 @@ export default function App() {
   const c = useColors();
   const base = c.isDark ? DarkTheme : DefaultTheme;
   return (
+    <ErrorBoundary>
     <AuthProvider>
       <NavigationContainer theme={{ ...base, colors: { ...base.colors, background: c.bg, card: c.header } }}>
         <StatusBar style="light" />
         <AppNavigator />
       </NavigationContainer>
     </AuthProvider>
+    </ErrorBoundary>
   );
 }

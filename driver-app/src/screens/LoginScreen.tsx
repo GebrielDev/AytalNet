@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import HelpLinks from '../components/HelpLinks';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -64,6 +65,7 @@ export default function LoginScreen() {
         <TouchableOpacity style={styles.forgotButton} onPress={() => navigation.navigate('ForgotPassword')}>
           <Text style={styles.forgotText}>Forgot your password?</Text>
         </TouchableOpacity>
+        <HelpLinks color="rgba(255,255,255,0.75)" />
       </View>
     </View>
   );

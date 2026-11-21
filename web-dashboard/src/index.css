@@ -114,3 +114,8 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Night map: darken the street tiles in dark mode (no map key needed). */
+.dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9); }
+.dark .leaflet-container { background: rgb(var(--gray-50)); }
+.dark .leaflet-control-zoom a, .dark .leaflet-control-attribution { background: rgb(var(--gray-100)); color: rgb(var(--gray-800)); border-color: rgb(var(--gray-200)); }
