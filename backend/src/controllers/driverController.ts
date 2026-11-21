@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Driver, Trip, Vehicle, DriverStop } from '../models';
+import { Driver, Trip, Vehicle, DriverStop, OdometerCorrection } from '../models';
 import { Op } from 'sequelize';
 import { geocodeAddress } from '../services/geo';
 import sequelize from '../config/database';
@@ -543,17 +543,85 @@ export const correctStopOdometer = async (req: Request, res: Response): Promise<
       res.status(400).json({ error: 'Add a short reason for the record' });
       return;
     }
+    const original = Number(stop.originalOdometer ?? stop.arrivedOdometer);
+    // Log row and reading change are saved together, or not at all.
+    await sequelize.transaction(async (transaction) => {
+    await OdometerCorrection.create({
+      driverId: stop.driverId,
+      stopId: stop.id,
+      tripId: stop.tripId ?? null,
+      stopPosition: stop.position,
+      stopAddress: stop.address,
+      originalOdometer: original,
+      previousOdometer: Number(stop.arrivedOdometer),
+      newOdometer: odometer,
+      reason,
+      correctedById: req.user!.id,
+      correctedByName: req.user!.name,
+    }, { transaction });
     await stop.update({
       originalOdometer: stop.originalOdometer ?? stop.arrivedOdometer,
       arrivedOdometer: odometer,
       odometerCorrectedAt: new Date(),
       odometerCorrectedBy: req.user!.name,
       odometerCorrectionReason: reason,
+    }, { transaction });
     });
     console.log(`[stops] Odometer for stop ${stop.id} corrected to ${odometer} by user ${req.user!.id}`);
     res.json({ stops: await syncDriverStops(req.app.get('io'), stop.driverId) });
   } catch (error) {
     console.error('[stops] Could not correct odometer', error);
     res.status(500).json({ error: 'Failed to correct the reading' });
+  }
+};
+
+/** Every odometer correction, newest first. Filters: ?days=30 (0 = all), ?driverId=3. */
+export const getOdometerCorrections = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const rawDays = req.query.days === undefined ? '90' : String(req.query.days);
+    if (!/^\d+$/.test(rawDays)) {
+      res.status(400).json({ error: 'days must be a whole number (0 = all time)' });
+      return;
+    }
+    const days = Math.min(Number(rawDays), 3650);
+    const where: Record<string, unknown> = {};
+    if (days > 0) where.createdAt = { [Op.gte]: new Date(Date.now() - days * 86400000) };
+    if (req.query.driverId !== undefined && req.query.driverId !== '') {
+      if (!/^\d+$/.test(String(req.query.driverId))) {
+        res.status(400).json({ error: 'Invalid driver id' });
+        return;
+      }
+      where.driverId = Number(req.query.driverId);
+    }
+    const rows = await OdometerCorrection.findAll({
+      where,
+      include: [{ model: Driver, as: 'driver', attributes: ['id', 'name', 'employeeId'] }],
+      order: [['createdAt', 'DESC']],
+      limit: 1000,
+    });
+    res.json(
+      rows.map((r) => {
+        const d = (r as any).driver;
+        return {
+          id: r.id,
+          driverId: r.driverId,
+          driverName: d?.name ?? 'Removed driver',
+          employeeId: d?.employeeId ?? null,
+          stopId: r.stopId ?? null,
+          tripId: r.tripId ?? null,
+          stopPosition: r.stopPosition ?? null,
+          stopAddress: r.stopAddress ?? null,
+          originalOdometer: Number(r.originalOdometer),
+          previousOdometer: Number(r.previousOdometer),
+          newOdometer: Number(r.newOdometer),
+          reason: r.reason,
+          correctedByName: r.correctedByName ?? null,
+          createdAt: r.createdAt,
+        };
+      })
+    );
+  } catch (error) {
+    console.error('[stops] Could not load corrections', error);
+    res.status(500).json({ error: 'Failed to load corrections' });
   }
 };

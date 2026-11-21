@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getAllDrivers, getDriverById, createDriver, updateDriver, deleteDriver, assignVehicle, getMyAssignedVehicle, setDriverDestination, getMyDestination, setDriverStops, getDriverStops, getMyStops, arriveAtStop, getStopsBoard, updateMyLocation, correctStopOdometer } from '../controllers/driverController';
+import { getAllDrivers, getDriverById, createDriver, updateDriver, deleteDriver, assignVehicle, getMyAssignedVehicle, setDriverDestination, getMyDestination, setDriverStops, getDriverStops, getMyStops, arriveAtStop, getStopsBoard, updateMyLocation, correctStopOdometer, getOdometerCorrections } from '../controllers/driverController';
 import { sendDriverNote, getDriverNotes, getMyNotes, markMyNoteRead, replyToMyNote } from '../controllers/notesController';
 import { authenticateToken, requireUser, requireDriver } from '../middleware/auth';
 import multer from 'multer';
@@ -27,6 +27,7 @@ router.use(authenticateToken, requireUser);
 
 router.get('/', getAllDrivers);
 router.get('/stops-board', getStopsBoard);
+router.get('/odometer-corrections', getOdometerCorrections);
 router.get('/:id', getDriverById);
 router.post('/', createDriver);
 router.put('/:id', updateDriver);

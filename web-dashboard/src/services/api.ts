@@ -128,6 +128,7 @@ export const driversApi = {
   setDestination: (id: number, address: string, note: string) => api.put(`/drivers/${id}/destination`, { address, note }),
   getStops: (id: number) => api.get(`/drivers/${id}/stops`),
   getStopsBoard: () => api.get('/drivers/stops-board'),
+  getOdometerCorrections: (params: { days: number; driverId?: string }) => api.get('/drivers/odometer-corrections', { params }),
   correctStopOdometer: (id: number, stopId: number, odometer: number, reason: string) =>
     api.put(`/drivers/${id}/stops/${stopId}/odometer`, { odometer, reason }),
   getNotes: (id: number) => api.get(`/drivers/${id}/notes`),

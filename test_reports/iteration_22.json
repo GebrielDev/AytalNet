@@ -1,0 +1,39 @@
+{
+  "summary": "Corrections Log tested end to end. Backend: the new test_round22_corrections_log.py passes 12/12. Each PUT /drivers/:id/stops/:stopId/odometer writes one odometer_corrections row with the right originalOdometer (the driver's first entry), previousOdometer, newOdometer, trimmed reason, correctedByName (Admin User / Dispatcher User), stopPosition, stopAddress and tripId. A request rejected with 400 writes no row. Rows are still there after PUT /drivers/3/stops with clearDone, and after the trip is cancelled. The table has no FK cascade. GET /drivers/odometer-corrections: no token gives 401, a driver token 403, dispatcher and admin 200. Rows come newest first with driverName 'James Wilson' and employeeId 'DRV003'. driverId filter works; driverId abc, -1, 1.5 and '3;drop' return 400. days filter works with a row backdated 40 days (excluded at 30, included at 90, 365, 0 and the default 90). Regression: test_round21_fix_reading 17/17 (the loose-types fix now passes), test_round20_odometer_flags 6/6. Dashboard (dispatcher and admin, 1920 and 390 px): the Corrections nav item, including in the mobile hamburger menu, opens /corrections. The table shows when, driver/stop/trip/address, a struck-through previous value → new value in mi, 'Driver entered 25065' only when different from the previous value, changed by, and reason. Driver filter: Maria shows corrections-empty and Download is disabled; James shows 5 rows. Range filter: the 30-day view hid the backdated row. Download CSV saves odometer-corrections-YYYY-MM-DD.csv with an 11-column header plus 5 correct, quoted rows. At 390 px the table is hidden, cards are shown and nothing scrolls sideways. Light and dark mode are readable. One minor UI bug: when a reload fails, the old rows stay on screen and can still be downloaded.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/drivers/odometer-corrections", "issue": "Non-numeric or negative days (days=abc, days=-5) silently fall back to all time (0) instead of 400 or the default of 90. days=99999 is capped at 3650. Results are also capped at 1000 rows with no hint that rows were cut off."},
+      {"endpoint": "PUT /api/drivers/:id/stops/:stopId/odometer", "issue": "OdometerCorrection.create and stop.update run outside a transaction. If stop.update fails, a log row exists for a change that never happened (driverController.ts:547-566)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Corrections error state", "issue": "When a reload fails (forced 500), corrections-error shows but the rows from the previous filter stay listed under the new filter label, and Download CSV stays enabled, so it exports stale rows that don't match the selected range. Fix: call setRows([]) in the catch. Requests are also not cancelled, so a slow response for an older filter can overwrite a newer one; ignore stale responses with a cancelled flag or AbortController. Corrections.tsx:44-52", "testID": "corrections-error", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Corrections (mobile 390px)", "issues": ["The filter selects (38px tall) and the Download CSV button (36px) are under the 44px touch target.", "Mobile cards leave out 'Trip #N', which the desktop table shows."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/regression/test_round22_corrections_log.py", "/app/test_reports/regression/test_round21_fix_reading.py", "/app/test_reports/regression/test_round20_odometer_flags.py", "/app/test_reports/pytest/round22.xml"],
+  "action_items": [
+    "LOW: Corrections.tsx: clear rows on load error and ignore stale responses so the list and CSV always match the selected filters.",
+    "LOW: getOdometerCorrections: validate days (return 400, or use the default 90, for non-numeric or negative values).",
+    "LOW: Wrap the correction log insert and the stop update in a sequelize transaction.",
+    "LOW (optional): CSV export: prefix cells that start with =, +, - or @ to prevent formula injection in Excel (reason and address are free text)."
+  ],
+  "critical_code_review_comments": [
+    "The /odometer-corrections route is registered before /:id and behind requireUser, which is correct.",
+    "There are no FK constraints on odometer_corrections, so rows survive deletion of stops and drivers. The UI falls back to 'Removed driver'.",
+    "The CSV builder quotes and escapes every cell correctly."
+  ],
+  "updated_files": ["/app/test_reports/regression/test_round22_corrections_log.py"],
+  "success_rate": {"backend": "100% (35/35 across round20/21/22)", "frontend": "95% (all flows work; one minor stale-rows-on-error bug)"},
+  "seed_data_creation": "Created 5 odometer_corrections rows (ids 1-5, reasons prefixed TEST_) for James (driver 3) via the round21 KEEP=1 run plus round22. They were left in place as the record, as requested. Row 1 was backdated for the days test and then restored to its original created_at. Trip 49 was cancelled, James's stops were cleared, and vehicle 3 odometer was restored to 20060.0. Michael's trip 6 is untouched (in_progress).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Corrections Log: python -m pytest test_round22_corrections_log.py needs James to have stops with readings, so run it right after 'KEEP=1 pytest test_round21_fix_reading.py'. Its last test clears James's stops; afterwards run 'python r21_cleanup.py 20060.0' to cancel the trip and restore the odometer. Dashboard: /api/dashboard/corrections. testIDs: corrections-table, corrections-row-<id>, corrections-card-<id>, corrections-driver-filter, corrections-range-filter, corrections-download, corrections-empty, corrections-error. Theme toggle: theme-toggle. Mobile nav: the first header button opens the sidebar.",
+  "rca_of_issue": ""
+}
