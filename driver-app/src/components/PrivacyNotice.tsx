@@ -31,7 +31,7 @@ export default function PrivacyNotice() {
           <Text style={styles.item}>
             <Text style={styles.bold}>Photos</Text> — odometer, plate and selfie you take for each trip, kept with your trip records.
           </Text>
-          <Text style={styles.item}>Only your company's dispatchers and admins can see this. Nothing is sold or used for ads.</Text>
+          <Text style={styles.item}>Only your company{"'"}s dispatchers and admins can see this. Nothing is sold or used for ads.</Text>
           <TouchableOpacity style={styles.link} onPress={() => openLink(PRIVACY_URL)} testID="privacy-notice-policy">
             <Text style={styles.linkText}>Read the Privacy Policy</Text>
           </TouchableOpacity>

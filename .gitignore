@@ -52,3 +52,4 @@ pc-api-*.json
 *.p12
 *.mobileprovision
 *.cer
+memory/test_credentials.md

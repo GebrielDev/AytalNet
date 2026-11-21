@@ -1,9 +1,7 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { createTokenRefresher } from './tokenRefresh';
 import { tokenStorage } from './tokenStorage';
-
-// Production API URL - override via EXPO_PUBLIC_API_URL env var at build time
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://api.startechsolutions.us/api';
+import { API_URL } from '../config';
 
 const api = axios.create({
   baseURL: API_URL,

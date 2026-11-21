@@ -85,3 +85,13 @@ columns are harmless to older code.
 - Everyone who changes or resets a password is signed out on their other devices.
 - Existing sign-ins keep working after the deploy (old tokens count as version 0).
 - New dashboard pages: Stops board, Coverage, Corrections; Drivers page has "Note".
+
+## Emergent deploy (bridge)
+The Emergent deployment runs `backend/server.py`, a small bridge that forwards
+every `/api` request and live update to this Railway API. Railway must be on the
+current code first (older code has no driver live-update channel).
+- On Railway (backend variables) set `BRIDGE_SHARED_SECRET` to a long random value.
+- In Emergent (deployment secrets) set the same `BRIDGE_SHARED_SECRET`, and
+  `FLEET_API_UPSTREAM=https://api.startechsolutions.us` (the default).
+With the shared secret, login attempt limits count each real caller instead of
+treating everyone behind the bridge as one address.

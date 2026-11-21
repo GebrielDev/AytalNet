@@ -1,0 +1,51 @@
+{
+  "summary": "Retest of the iteration_26 HIGH bug (bridge /app/backend/server.py: websocket-only socket.io client never reconnected after an upstream outage). FIXED. The bridge now connects upstream before ws.accept(). With the upstream down, the handshake is refused (HTTP 403 / close 1011 without accept), and socket.io keeps retrying. Results: socket_round26_outage.cjs PASS (reconnected 0.1 s after upstream came back). socket_round26_down_retry.cjs passes for websocket and polling (10 attempts in 6 s each). New socket_round27_outage_long.cjs PASS: an 8 s port-closed outage and then a 5 s HTTP-503 outage (like Railway mid-deploy), and the client reconnected after both. Live events through the bridge (8019 -> real test API 8002) on '/' and '/driver' work in websocket, polling and default modes: notes:updated and note:replied both arrive. test_round26_bridge_ip.py 12/12 pass. I updated the old 1011-after-accept assertion to expect a refused handshake (403), which is the intended new behaviour. test_round25_bridge.py 14/14 pass. Timing-safe secret check in rateLimit.ts: a wrong secret is ignored and the right one honoured. Odd secrets (1 char, 3000 chars, unicode) return 401, not 500. Driver app preview (390x844): james logs in, Home shows the active trip banner, and the socket opens on wss://.../api/socket.io. On Active Trip, an admin note posted via the API appeared live without a reload. FINDING (MEDIUM): the new 30 s watchdog in liveUpdates.ts does not detect the stuck state it is meant to cover. A websocket that is accepted and then closed before the engine.io open (the old bridge failure mode) leaves the socket with connected=false and active=true. The manager stays _readyState='opening' while the engine is 'closed', and no event fires. So `!connected && !active` never runs connect(). Through the fixed bridge this state no longer happens, so this does not block.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "WS /api/socket.io/ (server.py socket_bridge)", "issue": "When the upstream dies mid-session, the ConnectionClosedError is raised inside the to_client task, not in the surrounding try. asyncio.wait never retrieves it, so the log shows 'Task exception was never retrieved' tracebacks (2 in /tmp/b8042.log during the outage tests). The `close_code = 1011` branch is unreachable, so the client always gets 1000. The client still reconnects ('transport close'), so the impact is log noise and a wrong close code. Fix: after asyncio.wait, loop over the done tasks and call task.exception() / task.result() inside the try, and set close_code=1011 if it is a websockets/OSError exception."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Driver live updates watchdog (driver-app/src/services/liveUpdates.ts:62-64)", "issue": "The condition `!socket.connected && !socket.active` misses the 'stuck opening' state (connected=false, active=true, manager _readyState='opening', engine.readyState='closed'), so the backstop never fires there. It only helps when socket.io has really stopped: after connect_error from middleware, after 'io server disconnect', or when refreshThenReconnect's getStops() rejects offline and skips socket.connect(). Verified with socket_round27_watchdog.cjs: the liveUpdates logic FAILS (watchdogFired=0). A variant that runs socket.disconnect(); socket.connect() when !socket.connected recovered within one tick.", "affected_testIDs": []}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/regression/socket_round26_outage.cjs",
+    "/app/test_reports/regression/socket_round26_down_retry.cjs",
+    "/app/test_reports/regression/socket_round27_outage_long.cjs",
+    "/app/test_reports/regression/socket_round27_watchdog.cjs",
+    "/app/test_reports/regression/socket_round25_bridge.cjs",
+    "/app/test_reports/regression/test_round26_bridge_ip.py",
+    "/app/test_reports/regression/test_round25_bridge.py",
+    "/app/test_reports/regression/round27_james_helper.py",
+    "/app/test_reports/pytest/round27_bridge_ip.xml",
+    "/app/test_reports/pytest/round27_bridge25.xml"
+  ],
+  "action_items": [
+    "MEDIUM liveUpdates.ts watchdog: also handle connected=false with active=true. For example, keep a counter of ticks with !socket.connected, and on the 2nd consecutive tick (about 60 s) call socket.disconnect(); socket.connect(). That resets the manager. Leave the existing !active branch in place. Verify with socket_round27_watchdog.cjs: change its interval logic to match and expect PASS.",
+    "LOW server.py socket_bridge: read the exceptions of finished tasks after asyncio.wait so the 1011 close code is actually sent and 'Task exception was never retrieved' tracebacks stop.",
+    "Leftover TEST_ driver_notes from older iterations (ids 2-27 and 38, created by earlier runs and not by this one) are still in fleet_test for james. Clean them up if wanted. test_round25_bridge.py's note test does not delete its 'TEST_ bridge note' (I deleted the one from my run, id 42)."
+  ],
+  "critical_code_review_comments": [
+    "server.py: the pre-accept upstream connect is correct. InvalidStatus (upstream HTTP 4xx/5xx on upgrade) is covered by WebSocketException, and a 503 upstream gave a refused handshake and continued retries.",
+    "server.py: open_timeout=10 holds the client's handshake for up to 10 s when Railway hangs. That is under socket.io's 20 s connect timeout, so it is OK.",
+    "rateLimit.ts: hashing both sides to sha256 hex before timingSafeEqual avoids the length-mismatch throw. Correct."
+  ],
+  "updated_files": [
+    "/app/test_reports/regression/test_round26_bridge_ip.py (TestWsDown now expects the refused handshake, HTTP 403, instead of 1011 after accept)",
+    "/app/test_reports/regression/socket_round27_outage_long.cjs (new)",
+    "/app/test_reports/regression/socket_round27_watchdog.cjs (new)",
+    "/app/test_reports/regression/round27_james_helper.py (new)"
+  ],
+  "success_rate": {"backend": "100% (26/26 pytest + 7/7 socket scripts through the bridge)", "frontend": "100% of UI flows (login, Home, Active Trip live note); watchdog backstop logic fails its stuck-state simulation"},
+  "seed_data_creation": "Created and deleted: trip 60 (james, cancelled then deleted with its trip_photos), trip 59 (from test_round25_bridge, deleted with its trip_photos), driver_notes 42-46 (deleted). auth_rate_limits cleared between batches and at the end. Michael's trip 6 untouched (still in_progress). All bridges and the echo server killed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Start bridges with setsid nohup ... < /dev/null & (see /tmp/start_bridges.sh pattern), otherwise the tool call hangs or kills them: 8019 secret->8002, 8021 secret->echo 8022 (python3 bridge_echo_upstream.py 8022), 8023/8024 no secret ->8002/8022, 8031 secret->:9, 8042 -> 8041 (outage scripts start their own socket.io server on UP_PORT=8041). Watchdog sim: node socket_round27_watchdog.cjs (uses port 8051). Driver app preview: privacy-notice-ok, then login. Use round27_james_helper.py start|cleanup <trip> <noteIds> for an active trip for james.",
+  "rca_of_issue": "Iteration 26 bug: the old bridge accepted the client ws and then closed it when the upstream connect failed. socket.io-client's engine closed before 'open' without emitting an error, which left the Manager stuck in 'opening' (no reconnect scheduled). The fix refuses the handshake before accept, so the engine emits a 'websocket error', the reconnect backoff continues, and the client recovered in every outage scenario tested. The same stuck state still defeats the new client watchdog, which checks socket.active (true in that state)."
+}

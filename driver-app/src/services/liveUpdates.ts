@@ -1,4 +1,5 @@
 import { tokenStorage } from './tokenStorage';
+import { API_URL, SOCKET_PATH } from '../config';
 import { io, Socket } from 'socket.io-client';
 import { getStops, setStopsLocal, syncNow } from './offlineTrips';
 import { fetchNotes, setNotesLocal } from './notes';
@@ -13,10 +14,8 @@ import { fetchNotes, setNotesLocal } from './notes';
  * the destination saved on the phone is shown meanwhile.
  */
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://api.startechsolutions.us/api';
 const ORIGIN = API_URL.replace(/\/api\/?$/, '');
-// Only differs where a proxy moves socket.io (the preview test copy).
-const PATH = process.env.EXPO_PUBLIC_SOCKET_PATH || '/socket.io';
+const PATH = SOCKET_PATH;
 
 let socket: Socket | null = null;
 
@@ -59,7 +58,24 @@ export const startLiveUpdates = (driverId: number | null): (() => void) => {
     fetchNotes();
   });
 
+  // Backstop: if the socket has been down for two checks in a row (~60 s),
+  // socket.io may be stuck; start a fresh connection.
+  let downTicks = 0;
+  const watchdog = setInterval(() => {
+    if (!socket || socket.connected) {
+      downTicks = 0;
+      return;
+    }
+    downTicks += 1;
+    if (downTicks >= 2) {
+      downTicks = 0;
+      socket.disconnect();
+      socket.connect();
+    }
+  }, 30000);
+
   return () => {
+    clearInterval(watchdog);
     socket?.removeAllListeners();
     socket?.disconnect();
     socket = null;

@@ -1,0 +1,49 @@
+{
+  "summary": "Retest of the iteration_25 bridge action items (/app/backend/server.py). Bridges ran on 8019 (with secret, to 8002), 8021 (with secret, to echo 8022), 8023 and 8024 (no secret, to 8002 and to echo), and 8031 (dead upstream :9). New pytest test_round26_bridge_ip.py: 12/12 pass. Re-ran test_round25_bridge.py: 14/14 pass. Socket.IO through the bridge on '/' and '/driver' passes in websocket, polling and default modes. Driver app preview at 390x844: login, then Home (the socket at /api/socket.io opens). Verified: the bridge forwards the last X-Forwarded-For entry (BRIDGE_TRUSTED_HOPS=1) as x-forwarded-for and x-bridge-client-ip, and adds the real secret. A client's spoofed x-bridge-secret and x-bridge-client-ip are replaced or stripped, also on the bridge without a secret. IP A gets 429 on the 11th failed login on james and is still 429 with the right password, while IP B logs in with 200. A rotating spoofed x-bridge-client-ip or rotating prepended XFF entries still hit 429. A direct call to Node with a wrong secret ignores x-bridge-client-ip (429); with the right secret it honours it (no 429). With no secret on the bridge, limits fall back to plain XFF and still work per IP. Two Set-Cookie headers are kept separate, with exactly one date and one server header. A websocket to the dead-upstream bridge closes with 1011. FAILED: the 1011 close does NOT make socket.io retry when the client uses transports:['websocket'], which is how the driver app connects.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "WS /api/socket.io/ (server.py socket_bridge)", "issue": "The bridge calls ws.accept() before connecting to the upstream, then closes with 1011. socket.io-client 4.8.4 (engine.io-client 6.6.8) with transports:['websocket'] sees 'transport close' during the handshake. It emits no connect_error and makes no further reconnect attempts. Repro (socket_round26_outage.cjs): the upstream goes down for 3 s mid-session, the client disconnects and makes 1 reconnect attempt, then stays dead forever after the upstream is back (FAIL). Against the same server directly, or through a bridge patched to connect upstream before accept, it retries every ~0.8 s and reconnects (PASS). Impact: after any Railway restart or redeploy, every driver app's live updates stop until the app restarts (liveUpdates.ts has no app-level recovery for this case).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "rateLimit.ts", "issue": "x-bridge-secret is compared with === (not timing-safe). Low risk, but crypto.timingSafeEqual on equal-length buffers is better."},
+      {"endpoint": "bridge client_ip", "issue": "TRUSTED_HOPS=1 assumes Emergent's ingress adds exactly one XFF entry in production. This could not be verified from preview (8001 is the preview proxy, not the bridge). Check once after deploy, e.g. by logging x-bridge-client-ip on Railway."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Driver live updates after an upstream outage", "issue": "With transports:['websocket'] the socket never reconnects through the bridge (see backend critical issue).", "affected_testIDs": []}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/regression/test_round26_bridge_ip.py",
+    "/app/test_reports/regression/socket_round26_down_retry.cjs",
+    "/app/test_reports/regression/socket_round26_outage.cjs",
+    "/app/test_reports/regression/test_round25_bridge.py",
+    "/app/test_reports/pytest/round26_bridge_ip.xml",
+    "/app/test_reports/pytest/round25_bridge_rerun.xml"
+  ],
+  "action_items": [
+    "server.py socket_bridge: open the upstream websocket BEFORE ws.accept(). If that fails, call `await ws.close(code=1011)` without accepting, which refuses the handshake. The client then gets connect_error 'websocket error' and socket.io keeps retrying. I checked this approach with a temp copy (/tmp, not committed): socket_round26_outage.cjs goes from FAIL to PASS. Also close the upstream connection in the finally block.",
+    "Optionally add app-level recovery in driver-app/src/services/liveUpdates.ts as a backstop: if not connected N seconds after a disconnect, call socket.connect().",
+    "Optional: use a timing-safe compare for x-bridge-secret in rateLimit.ts.",
+    "After deploy, confirm that Emergent production ingress adds exactly one XFF hop (BRIDGE_TRUSTED_HOPS=1)."
+  ],
+  "critical_code_review_comments": [
+    "server.py: the accept-then-close on upstream failure defeats socket.io's reconnect for websocket-only clients. The closing comment 'tell the client so socket.io reconnects' only holds for polling and default clients.",
+    "Header handling (multi_items, OWN_RESPONSE_HEADERS, BRIDGE_HEADERS stripping, last XFF hop) is correct."
+  ],
+  "updated_files": [
+    "/app/test_reports/regression/test_round26_bridge_ip.py (new)",
+    "/app/test_reports/regression/socket_round26_down_retry.cjs (new)",
+    "/app/test_reports/regression/socket_round26_outage.cjs (new)"
+  ],
+  "success_rate": {"backend": "26/27 checks pass (12/12 round26 + 14/14 round25 pytest; socket modes 3/3; websocket-only reconnect after outage FAIL)", "frontend": "100% (login -> Home)"},
+  "seed_data_creation": "None kept. I deleted notes 39-41 (TEST_ bridge socket *) and trip 58 with its 3 trip_photos (created by the round25 rerun), and cleared auth_rate_limits. Michael's in-progress trip 6 is untouched. Older leftover cancelled/completed james trips (ids 43-53) come from earlier iterations; test_round25_bridge.py does not delete the trip it creates.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Bridges: S=$(grep ^BRIDGE_SHARED_SECRET /app/backend/.env|cut -d= -f2-). 8019: BRIDGE_SHARED_SECRET=$S FLEET_API_UPSTREAM=http://127.0.0.1:8002. 8021: secret + FLEET_API_UPSTREAM=http://127.0.0.1:8022 (python3 bridge_echo_upstream.py 8022). 8023 and 8024: env -u BRIDGE_SHARED_SECRET, to 8002 and 8022. 8031: secret, to :9. Run pytest test_round26_bridge_ip.py with BRIDGE_URL, ECHO_BRIDGE_URL, NOSECRET_BRIDGE_URL, NOSECRET_ECHO_URL, DOWN_BRIDGE_URL and UPSTREAM_URL set. Outage test: start a bridge on 8042 with FLEET_API_UPSTREAM=http://127.0.0.1:8041, then BASE=http://127.0.0.1:8042 UP_PORT=8041 node socket_round26_outage.cjs (it starts its own socket.io server on 8041). Driver app login shows a privacy sheet first (testID privacy-notice-ok). Delete any trip that test_round25_bridge.py creates (trip_photos first).",
+  "rca_of_issue": "socket_bridge accepts the client websocket and only then tries websockets.connect(upstream). When the upstream is down, the client sees a websocket that opened and then closed (1011) before the engine.io OPEN packet. engine.io-client emits only 'close' (no 'error') while the socket is still opening. socket.io-client's Manager.open() only listens for 'error' at that stage, so maybeReconnectOnOpen never runs and reconnection stops. A refused handshake (HTTP 403 or connection refused) emits 'error', so socket.io retries normally. Fix: connect upstream first, and close before accept on failure."
+}

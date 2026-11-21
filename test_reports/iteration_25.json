@@ -1,0 +1,56 @@
+{
+  "summary": "Tested the FastAPI deploy bridge (/app/backend/server.py) on a local port. Bridges ran on 8019 (pointed at the fleet API on 8002), 8021 (pointed at an echo upstream on 8022, to check bytes and headers) and 8031 (pointed at a dead upstream on :9). I also briefly ran a bridge on 8032 against production Railway, read-only. All bridges are stopped now. server.py passes the ast check and `import server` works. requirements.txt has fastapi 0.110.1, uvicorn 0.25.0, httpx 0.28.1 and websockets 17.4. pytest test_round25_bridge.py passes 14/14. One first-run failure was a test bug (photo URLs are in trip_photos), which I fixed. What passes: /health and /api/health return 200, including when the upstream is down. Driver and admin logins work through the bridge. Authenticated GET responses are identical to calling the API directly. PUT stops and POST notes persist. Repeated query params (status=a&status=b) reach the upstream twice and give the same result as a direct call. Multipart bodies arrive byte-identical (sha256 check through the echo upstream; an 8 MB file also passed). The real trip start with 3 photos and a stop arrival with a photo both work. GET /api/files/... returns JPEG bytes with content-type image/jpeg, identical to a direct call. 400, 401, 404, 429 and 500 pass through unchanged (429 after 10 failed logins). The CORS preflight returns allow-origin * and allow-methods. The bridge strips the Origin header and forwards Authorization. With a dead upstream, /api/* returns 502 JSON. 80 parallel requests all returned 200. Socket.IO through /api/socket.io works for websocket-only, polling-only and the default polling-then-upgrade mode, on both '/' (admin token) and '/driver' (driver token). The driver socket got notes:updated and the dashboard got note:replied. Sockets stay connected for 55 s over both transports, and a bad driver token is refused. Against production Railway, the bridge relays polling and websocket correctly (/socket.io path is right), but Railway answers 'Invalid namespace' for /driver. Driver app preview at 390x844 (EXPO_PUBLIC_BACKEND_URL -> /api, socket at /api/socket.io over websocket): login reaches Home. A note sent while on Home arrives as a notes:updated socket frame. On ActiveTrip, a new note shows up live in NotesCard without a reload, and the notes can be acknowledged. Trip History loads 2 trips and their photos.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "Socket.IO /driver namespace on production Railway (FLEET_API_UPSTREAM default)", "issue": "Through the bridge, production https://api.startechsolutions.us refuses the '/driver' namespace with 'Invalid namespace'. Production Railway is running older backend code. Once the Emergent deploy points at Railway, the driver app's live updates (notes:updated, stops:updated) will not connect until Railway is redeployed with the current backend. The bridge itself relays correctly.", "priority": "HIGH"},
+      {"endpoint": "POST /api/auth/login, /api/auth/driver/login (per-IP rate limit behind the bridge)", "issue": "Railway uses trust proxy = TRUST_PROXY_HOPS (default 1). Behind the bridge, the rightmost X-Forwarded-For entry will be the bridge's own outbound IP. So every user coming through the Emergent URL shares one IP for the login limits. 51 failed logins in total from anyone would then return 429 for everyone on that path. Also, the bridge forwards the client's X-Forwarded-For unchanged and does not append its own peer IP. Locally, rotating a spoofed X-Forwarded-For gave 12 failures with no 429. Fix: append request.client.host to the existing XFF in _forward_headers, and set TRUST_PROXY_HOPS on Railway to count Emergent ingress + bridge + Railway edge.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "all proxied responses", "issue": "Multiple Set-Cookie headers are merged into one comma-joined header: 'set-cookie: a=1; Path=/, b=2; Path=/'. This happens because server.py:78 uses upstream.headers.items() into a dict. Use multi_items() with Response.raw_headers. No cookies are used today."},
+      {"endpoint": "all proxied responses", "issue": "Duplicate 'date' and 'server' headers: the upstream's plus uvicorn's. Add date and server to the stripped headers."},
+      {"endpoint": "httpx client (server.py:37)", "issue": "The default pool is 100 connections, with a 60 s pool timeout. Every Socket.IO polling long-poll holds a connection for about 25 s. Many polling clients plus API traffic could queue requests. Set httpx.Limits explicitly. The driver app is websocket-only, so the risk is low."},
+      {"endpoint": "WS /api/socket.io/ (server.py:87)", "issue": "The bridge accepts the client's websocket before connecting to the upstream. With the upstream down, the client gets a silent close: no connect_error within 5 s (with reconnection:false). Consider connecting upstream first, or closing with code 1011."},
+      {"endpoint": "GET /api/health", "issue": "Answered by the bridge itself, so it never reflects Railway or DB health. Fine for liveness, but monitoring cannot see when Railway is down."},
+      {"endpoint": "GET /api/dashboard/", "issue": "Returns 404 through the bridge and on Railway. The web dashboard at /api/dashboard/ is served only by the preview-only fleet-preview-proxy, so the deployed Emergent URL will not host it."},
+      {"endpoint": "all", "issue": "The 60 s read timeout turns any upstream response slower than 60 s (for example large report exports) into a 502."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/regression/test_round25_bridge.py",
+    "/app/test_reports/regression/bridge_echo_upstream.py",
+    "/app/test_reports/regression/socket_round25_bridge.cjs",
+    "/app/test_reports/regression/socket_round25_keepalive.cjs",
+    "/app/test_reports/pytest/round25_bridge.xml"
+  ],
+  "action_items": [
+    "Redeploy the current backend to Railway. Production refuses the '/driver' Socket.IO namespace, so driver live updates will not work through the Emergent deploy until then.",
+    "Bridge: in _forward_headers, append the peer IP to X-Forwarded-For instead of passing the client's header through unchanged. Set TRUST_PROXY_HOPS on Railway (probably 2 or more) so login rate limits key on the real client IP, not the bridge's IP.",
+    "Bridge: keep multiple Set-Cookie headers (multi_items / raw_headers) and strip the upstream date and server headers.",
+    "Optional: set explicit httpx.Limits; connect to the upstream websocket before accepting the client (or close with 1011); trim requirements.txt to the bridge's real dependencies (it carries emergentintegrations, litellm, google-genai, pandas, boto3 and more, which slows the deploy).",
+    "Note: /api/dashboard/ is not served by the deployed bridge (preview proxy only)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:60-62: client X-Forwarded-For is forwarded as-is, and the peer IP is added only when no XFF is present.",
+    "server.py:78: dict comprehension over upstream.headers.items() collapses repeated headers.",
+    "server.py:108-111: tasks that fail with an exception (for example send_text after the client has gone) are never awaited, which can log 'Task exception was never retrieved'.",
+    "driver-app/.env still has EXPO_PUBLIC_API_URL and EXPO_PUBLIC_SOCKET_PATH. This is harmless: EXPO_PUBLIC_BACKEND_URL takes priority in config.ts.",
+    "/app/frontend is a symlink to /app/driver-app, so the Emergent frontend build uses the same config.ts."
+  ],
+  "updated_files": [
+    "/app/test_reports/regression/test_round25_bridge.py (new)",
+    "/app/test_reports/regression/bridge_echo_upstream.py (new)",
+    "/app/test_reports/regression/socket_round25_bridge.cjs (new)",
+    "/app/test_reports/regression/socket_round25_keepalive.cjs (new)"
+  ],
+  "success_rate": {"backend": "100% (14/14 pytest; 3/3 socket transport modes; keep-alive 2/2)", "frontend": "100% (login, Home, live notes, trip history)"},
+  "seed_data_creation": "Temporary data was created and then deleted by id: trips 54-57 (cancelled) with their trip_photos, and driver_notes 28-37. James's stops were cleared back to empty. Vehicle odometers did not change (vehicle 1: 15530, vehicle 3: 20060). Michael's trip 6 is still in_progress. auth_rate_limits was cleared. All 7 credential accounts log in. Uploaded test photo objects remain in photo storage.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Start the bridges on free ports: 8020 belongs to mongodb-mcp, 8001 to fleet-preview-proxy, 8002 to the fleet API. Run: cd /app/backend && FLEET_API_UPSTREAM=http://127.0.0.1:8002 /root/.venv/bin/uvicorn server:app --port 8019 &; python3 test_reports/regression/bridge_echo_upstream.py 8022 & plus a bridge on 8021 with FLEET_API_UPSTREAM=http://127.0.0.1:8022; a dead-upstream bridge on 8031 with FLEET_API_UPSTREAM=http://127.0.0.1:9. Then: BRIDGE_URL=http://127.0.0.1:8019 ECHO_BRIDGE_URL=http://127.0.0.1:8021 DOWN_BRIDGE_URL=http://127.0.0.1:8031 UPSTREAM_URL=http://127.0.0.1:8002 pytest test_reports/regression/test_round25_bridge.py. Sockets: BASE=http://127.0.0.1:8019 ADMIN=<tok> DRIVER=<james tok> MODE=websocket|polling|default node socket_round25_bridge.cjs. NotesCard is rendered only on ActiveTripScreen, not Home. Cleanup: delete notes and trips by id."
+}

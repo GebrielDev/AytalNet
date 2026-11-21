@@ -3,7 +3,6 @@ import { View, Text, TouchableOpacity, StyleSheet, Linking, Platform, ActivityIn
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { useColors, useStyles, type Palette } from '../theme';
-import { vehiclesApi } from '../services/api';
 import { submitArrival, type Stop } from '../services/offlineTrips';
 
 const encode = (address: string) => encodeURIComponent(address);
@@ -135,7 +134,7 @@ function ArriveButton({ stop, minOdometer, minLabel }: { stop: Stop; minOdometer
   if (!open) {
     return (
       <TouchableOpacity style={styles.arrive} onPress={() => setOpen(true)} testID={`arrive-button-${stop.id}`}>
-        <Text style={styles.arriveText}>I've arrived</Text>
+        <Text style={styles.arriveText}>I{"'"}ve arrived</Text>
       </TouchableOpacity>
     );
   }

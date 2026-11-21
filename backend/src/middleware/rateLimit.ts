@@ -19,6 +19,15 @@ const PER_IP = Number(process.env.AUTH_RATE_LIMIT_PER_IP) || 50;
 
 const digest = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 
+// Constant-time check of the bridge's shared secret.
+const secretMatches = (sent: string | undefined): boolean => {
+  const expected = process.env.BRIDGE_SHARED_SECRET;
+  if (!expected || !sent) return false;
+  const a = Buffer.from(digest(sent));
+  const b = Buffer.from(digest(expected));
+  return crypto.timingSafeEqual(a, b);
+};
+
 const hit = async (key: string, start: Date): Promise<number> => {
   const rows = await sequelize.query<{ hits: number }>(
     `INSERT INTO auth_rate_limits (key, window_start, hits) VALUES (:key, :start, 1)
@@ -38,7 +47,10 @@ export const authRateLimit = (kind: 'login' | 'driver-login' | 'forgot' | 'reset
     try {
       const now = Date.now();
       const start = new Date(Math.floor(now / WINDOW_MS) * WINDOW_MS);
-      const ip = req.ip || 'unknown';
+      // Behind the Emergent bridge every request comes from the bridge; it
+      // reports the real caller, trusted only with the shared secret.
+      const bridged = secretMatches(req.get('x-bridge-secret')) && req.get('x-bridge-client-ip');
+      const ip = (bridged ? String(req.get('x-bridge-client-ip')) : req.ip) || 'unknown';
       const who = String(req.body?.email ?? req.body?.token ?? '').trim().toLowerCase();
       const keys = [`${kind}:${digest(`${ip}|${who}`)}`, `${kind}:ip:${digest(ip)}`];
       const [account, total] = await Promise.all(keys.map((k) => hit(k, start)));

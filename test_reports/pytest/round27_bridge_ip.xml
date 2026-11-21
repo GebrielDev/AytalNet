@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="12" time="6.790" timestamp="2026-11-21T18:24:03.835274+00:00" hostname="agent-env-162fb2ea-1243-4414-ad3a-72d383847f45"><testcase classname="test_round26_bridge_ip.TestForwardedHeaders" name="test_secret_bridge_sets_trusted_headers_and_strips_spoofed" time="0.106" /><testcase classname="test_round26_bridge_ip.TestForwardedHeaders" name="test_secret_bridge_no_xff_uses_peer" time="0.098" /><testcase classname="test_round26_bridge_ip.TestForwardedHeaders" name="test_nosecret_bridge_strips_bridge_headers" time="0.103" /><testcase classname="test_round26_bridge_ip.TestResponseHeaders" name="test_set_cookie_and_single_date_server" time="0.097" /><testcase classname="test_round26_bridge_ip.TestRateLimitPerIp" name="test_ip_a_locked_ip_b_still_logs_in" time="0.963" /><testcase classname="test_round26_bridge_ip.TestRateLimitPerIp" name="test_xff_last_entry_used" time="0.842" /><testcase classname="test_round26_bridge_ip.TestRateLimitPerIp" name="test_spoofed_bridge_headers_ignored" time="0.840" /><testcase classname="test_round26_bridge_ip.TestNodeDirect" name="test_wrong_secret_ignores_client_ip" time="0.820" /><testcase classname="test_round26_bridge_ip.TestNodeDirect" name="test_right_secret_honours_client_ip" time="0.887" /><testcase classname="test_round26_bridge_ip.TestNoSecretFallback" name="test_fallback_per_xff_ip" time="0.915" /><testcase classname="test_round26_bridge_ip.TestNoSecretFallback" name="test_fallback_varied_ips_not_shared" time="0.905" /><testcase classname="test_round26_bridge_ip.TestWsDown" name="test_ws_down_1011" time="0.093"><failure message="websockets.exceptions.InvalidStatus: server rejected WebSocket connection: HTTP 403">test_round26_bridge_ip.py:128: in test_ws_down_1011
+    with ws_connect(url, open_timeout=10) as ws:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/websockets/sync/client.py:816: in connect
+    connection = connecter.connect()
+                 ^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/websockets/sync/client.py:496: in connect
+    connection = self.open_connection(deadline)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/websockets/sync/client.py:406: in open_connection
+    connection.handshake(
+/root/.venv/lib/python3.11/site-packages/websockets/sync/client.py:132: in handshake
+    raise self.protocol.handshake_exc
+/root/.venv/lib/python3.11/site-packages/websockets/client.py:334: in parse
+    self.process_response(response)
+/root/.venv/lib/python3.11/site-packages/websockets/client.py:145: in process_response
+    raise InvalidStatus(response)
+E   websockets.exceptions.InvalidStatus: server rejected WebSocket connection: HTTP 403</failure></testcase></testsuite></testsuites>
