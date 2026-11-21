@@ -7,8 +7,9 @@ photos.
 
 ## 1. Back up the database
 Railway → your Postgres service → **Backups** → create a backup. Step 2 adds
-columns (`trips.client_ref`, `trips.end_received_at`), and a backup is what lets
-you roll back.
+columns and tables on start-up (trips, drivers, users and driver_stops columns,
+plus the new `driver_notes`, `odometer_corrections` and `auth_rate_limits`
+tables). Nothing is dropped, but a backup is what lets you roll back.
 
 ## 2. Deploy the backend
 1. Merge these changes into the branch Railway deploys (normally `main`) and push.
@@ -26,6 +27,10 @@ you roll back.
 | `PUBLIC_API_URL` | `https://api.startechsolutions.us/api` | Base address for the new photo links |
 | `LATE_TRIP_ALERT_MINUTES` | `60` (optional) | How late a trip must arrive before dispatchers get an email |
 | `ALERT_TIMEZONE` | `America/Phoenix` (optional) | Time zone used for the times in alert emails |
+| `TRUST_PROXY_HOPS` | `1` (optional) | Lets login attempt limits see the real client address behind Railway's proxy |
+| `AUTH_RATE_LIMIT_PER_ACCOUNT` | `10` (optional) | Failed tries per email per 15 min before "Too many attempts" |
+| `AUTH_RATE_LIMIT_PER_IP` | `50` (optional) | Failed tries per network per 15 min |
+| `ODOMETER_JUMP_MILES` | `300` (optional) | Stop readings this far past the previous one are flagged |
 
 Keep `CLOUDINARY_*` set. Old photos stay on Cloudinary until step 6.
 `RESEND_API_KEY` and `EMAIL_FROM` must already be set (password reset uses
@@ -60,8 +65,10 @@ links work for anyone who has them, so photos are fully private only after
 `--delete-cloudinary`.
 
 ## 7. Release the driver app
-The app adds offline saving (netinfo, file-system), so it needs a new store
-build, not just an update. Build and submit version 1.1.0 as you normally do,
+The app adds offline saving (netinfo, file-system), encrypted sign-in storage
+(secure-store), dark mode (system-ui) and new permission texts, so it needs a
+new store build, not just an update. Its `EXPO_PUBLIC_API_URL` must be
+`https://api.startechsolutions.us/api` (the default if unset). Build and submit version 1.1.0 as you normally do,
 only after steps 2–4.
 
 ## 8. Update the retention job
@@ -73,3 +80,8 @@ erase photos stored in Emergent storage.
 Remove `PHOTO_STORAGE` to go back to Cloudinary for new photos. Photos already
 in Emergent storage keep working while `EMERGENT_LLM_KEY` stays set. The new
 columns are harmless to older code.
+
+## After go-live: what drivers and dispatchers notice
+- Everyone who changes or resets a password is signed out on their other devices.
+- Existing sign-ins keep working after the deploy (old tokens count as version 0).
+- New dashboard pages: Stops board, Coverage, Corrections; Drivers page has "Note".
