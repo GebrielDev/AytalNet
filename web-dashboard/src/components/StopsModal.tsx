@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { driversApi } from '../services/api';
 import AddressSearch, { type AddressPick } from './AddressSearch';
+import AuthImage from './AuthImage';
 
 interface Stop {
   id?: number;
@@ -10,6 +11,8 @@ interface Stop {
   longitude: number | null;
   arrivedAt?: string | null;
   arrivedDistanceMeters?: number | null;
+  arrivedOdometer?: number | null;
+  arrivedPhotoUrl?: string | null;
 }
 
 type Draft = AddressPick & { key: string; note: string; id?: number };
@@ -101,6 +104,12 @@ export default function StopsModal({ driver, onClose, onSaved }: { driver: { id:
                   Arrived {s.arrivedAt ? new Date(s.arrivedAt).toLocaleString() : ''}
                   {distanceText(s.arrivedDistanceMeters)}
                 </span>
+                {s.arrivedOdometer != null && <span className="block text-xs text-gray-700" data-testid={`stops-done-odometer-${i}`}>Odometer {s.arrivedOdometer} mi</span>}
+                {s.arrivedPhotoUrl && (
+                  <a href="#" onClick={(e) => e.preventDefault()} className="block mt-1">
+                    <AuthImage src={s.arrivedPhotoUrl} alt="Odometer at stop" className="w-24 h-24 object-cover rounded-lg border border-gray-200" testId={`stops-done-photo-${i}`} />
+                  </a>
+                )}
               </span>
             </div>
           ))}

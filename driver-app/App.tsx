@@ -9,6 +9,8 @@ import HomeScreen from './src/screens/HomeScreen';
 import StartTripScreen from './src/screens/StartTripScreen';
 import ActiveTripScreen from './src/screens/ActiveTripScreen';
 import EndTripScreen from './src/screens/EndTripScreen';
+import TripHistoryScreen from './src/screens/TripHistoryScreen';
+import PrivacyNotice from './src/components/PrivacyNotice';
 import { useColors } from './src/theme';
 import ErrorBoundary from './src/components/ErrorBoundary';
 
@@ -36,6 +38,7 @@ function AppNavigator() {
           <Stack.Screen name="StartTrip" component={StartTripScreen} options={{ title: 'Start Trip' }} />
           <Stack.Screen name="ActiveTrip" component={ActiveTripScreen} options={{ title: 'Active Trip', headerBackVisible: false }} />
           <Stack.Screen name="EndTrip" component={EndTripScreen} options={{ title: 'End Trip' }} />
+          <Stack.Screen name="TripHistory" component={TripHistoryScreen} options={{ title: 'Trip History' }} />
         </>
       )}
     </Stack.Navigator>
@@ -51,6 +54,7 @@ export default function App() {
       <NavigationContainer theme={{ ...base, colors: { ...base.colors, background: c.bg, card: c.header } }}>
         <StatusBar style="light" />
         <AppNavigator />
+        <PrivacyNotice />
       </NavigationContainer>
     </AuthProvider>
     </ErrorBoundary>

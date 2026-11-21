@@ -20,6 +20,8 @@ export const stopView = (s: DriverStop) => ({
   arrivedAt: s.arrivedAt ?? null,
   arrivedDistanceMeters: s.arrivedDistanceMeters ?? null,
   tripId: s.tripId ?? null,
+  arrivedOdometer: s.arrivedOdometer != null ? Number(s.arrivedOdometer) : null,
+  arrivedPhotoUrl: s.arrivedPhotoUrl ?? null,
 });
 
 export const listStops = async (driverId: number) =>
@@ -55,9 +57,10 @@ export const markStopArrived = async (
   distance: number | null,
   tripId: number | null,
   how: 'driver' | 'trip_end',
-  at: { latitude: number; longitude: number } | null = null
+  at: { latitude: number; longitude: number } | null = null,
+  proof: { odometer: number | null; photoUrl: string | null } = { odometer: null, photoUrl: null }
 ) => {
-  await stop.update({ arrivedAt: new Date(), arrivedDistanceMeters: distance, tripId, arrivedLatitude: at?.latitude ?? null, arrivedLongitude: at?.longitude ?? null });
+  await stop.update({ arrivedAt: new Date(), arrivedDistanceMeters: distance, tripId, arrivedLatitude: at?.latitude ?? null, arrivedLongitude: at?.longitude ?? null, arrivedOdometer: proof.odometer, arrivedPhotoUrl: proof.photoUrl });
   const driver = await Driver.findByPk(stop.driverId, { attributes: ['id', 'name'] });
   io?.to('dashboard').emit('driver:arrived', {
     driverId: stop.driverId,

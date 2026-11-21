@@ -5,6 +5,7 @@ import { geocodeAddress } from '../services/geo';
 import sequelize from '../config/database';
 import { listStops, syncDriverStops, markStopArrived, stopView } from '../services/stops';
 import { distanceMeters, arrivalRadiusMeters } from '../services/geo';
+import { storePhoto } from './tripController';
 
 export const getAllDrivers = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -332,8 +333,20 @@ export const arriveAtStop = async (req: Request, res: Response): Promise<void> =
         return;
       }
     }
+    // Optional proof: odometer reading and its photo.
+    const rawOdo = req.body?.odometer;
+    let odometer: number | null = null;
+    if (rawOdo !== undefined && rawOdo !== null && String(rawOdo).trim() !== '') {
+      odometer = Number(rawOdo);
+      if (!Number.isFinite(odometer) || odometer < 0) {
+        res.status(400).json({ error: 'Enter a valid odometer reading' });
+        return;
+      }
+    }
+    const file = (req as any).file as Express.Multer.File | undefined;
+    const photoUrl = file ? (await storePhoto(file, req)).photoUrl : null;
     const active = await Trip.findOne({ where: { driverId: stop.driverId, status: 'in_progress' }, attributes: ['id'] });
-    const stops = await markStopArrived(req.app.get('io'), stop, distance, active?.id ?? null, 'driver', { latitude: lat, longitude: lng });
+    const stops = await markStopArrived(req.app.get('io'), stop, distance, active?.id ?? null, 'driver', { latitude: lat, longitude: lng }, { odometer, photoUrl });
     res.json({ stops });
   } catch (error) {
     console.error('[stops] Could not record arrival', error);

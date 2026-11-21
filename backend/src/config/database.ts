@@ -107,6 +107,8 @@ export const connectDatabase = async (): Promise<void> => {
       'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS last_longitude DECIMAL(10,7);',
       'ALTER TABLE drivers ADD COLUMN IF NOT EXISTS last_located_at TIMESTAMP WITH TIME ZONE;',
       'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS arrived_longitude DECIMAL(10,7);',
+      'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS arrived_odometer DECIMAL(10,1);',
+      'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS arrived_photo_url TEXT;',
     ]) {
       try {
         await sequelize.query(statement);

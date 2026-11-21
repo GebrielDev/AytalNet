@@ -128,6 +128,8 @@ export const driversApi = {
   setDestination: (id: number, address: string, note: string) => api.put(`/drivers/${id}/destination`, { address, note }),
   getStops: (id: number) => api.get(`/drivers/${id}/stops`),
   getStopsBoard: () => api.get('/drivers/stops-board'),
+  getNotes: (id: number) => api.get(`/drivers/${id}/notes`),
+  sendNote: (id: number, message: string) => api.post(`/drivers/${id}/notes`, { message }),
   setStops: (id: number, stops: { id?: number; address: string; note: string; latitude: number | null; longitude: number | null }[], clearDone = false) =>
     api.put(`/drivers/${id}/stops`, { stops, clearDone }),
 };

@@ -163,6 +163,9 @@ export default function HomeScreen() {
 
       <View style={styles.historyHeader}>
         <Text style={styles.sectionTitle}>Completed Trips</Text>
+        <TouchableOpacity style={styles.historyLink} onPress={function () { navigation.navigate('TripHistory'); }} testID="home-trip-history-button">
+          <Text style={styles.historyLinkText}>Last 30 days ›</Text>
+        </TouchableOpacity>
         {recentTrips.length > 0 ? (
           <Text style={styles.totalMiles} testID="home-history-total-miles">
             {recentTrips.reduce(function (sum: number, t: any) { return sum + (Number(t.totalMileage) || 0); }, 0).toFixed(1) + ' mi · last ' + recentTrips.length + ' trips'}
@@ -256,7 +259,9 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   newTripBtnText: { color: '#fff', fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
 
   sectionTitle: { fontSize: 17, fontWeight: '700', color: c.text, letterSpacing: -0.2 },
-  historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 },
+  historyHeader: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 4 },
+  historyLink: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
+  historyLinkText: { fontSize: 15, fontWeight: '700', color: c.primaryText },
   totalMiles: { fontSize: 13, fontWeight: '600', color: c.textMuted },
   offlineBanner: { backgroundColor: c.border, borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: c.border },
   offlineText: { fontSize: 13, color: c.textSoft },

@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 14 tested backend and frontend for four new features: privacy notice, driver trip history, dispatcher notes and stop proof (odometer + photo). Backend: 16 of 17 pytest checks pass. The one failure is minor: a non-numeric id returns 500. Driver app at 390x844, light and dark: the privacy notice shows on first launch, the policy link opens https://driverapp.startechsolutions.us/privacy, and the notice does not come back after Got it and a reload. Trip History works: 44.0 mi and 9 trips, thumbnails load through blob auth, and the viewer opens and closes. The NotesCard on Active Trip shows notes, a note sent from the dashboard appeared live over the socket, and Got it removes it. The arrive panel works: invalid odometer is rejected, Cancel works, a photo can be attached, and confirming shows 'Arrived · 20020 mi · photo'. Dashboard at 1920x1080, light and dark: the Note modal works (chips fill the input, Send is disabled when empty, the sent note is listed with Seen / Not seen yet). The Stops board card and the StopsModal both show 'Odometer 20020 mi' and the photo thumbnail. One integration gap: the 'Seen' status in an open NotesModal does not update live after the driver taps Got it. Deprecated packages: none checked this round (none found in iteration 13).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/drivers/my-notes/:noteId/read, GET/POST /api/drivers/:id/notes", "issue": "A non-numeric id (for example 'abc') returns 500 ('Failed to update note' / 'Failed to fetch notes' / 'Failed to send note') because Postgres rejects the integer cast. It should return 400 or 404. Validate with Number.isInteger before querying."},
+      {"endpoint": "POST /api/drivers/my-stops/:stopId/arrive", "issue": "The multer fileFilter silently drops non-image files. The arrival is then recorded with no photo and no error. The stop odometer is also not checked against the trip's start odometer, so a reading lower than the start is accepted."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Dashboard NotesModal Seen status", "issue": "The backend emits 'notes:changed' to the dashboard room when a driver acknowledges a note, but nothing in web-dashboard/src listens for it (grep finds no matches). With the modal open, the driver acknowledged note 4 and the modal still showed 'Not seen yet' 3 seconds later. It updates only when the modal is reopened.", "affected_testIDs": ["notes-modal", "notes-item-<id>"]}
+    ],
+    "design_issues": [
+      {"screen": "Driver PrivacyNotice (web preview only)", "issues": ["privacy-notice-policy shows a browser focus outline box when the modal opens. This is cosmetic, comes from react-native-web auto-focus, and does not affect native."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/regression/test_round14_notes_history_stopproof.py",
+    "/app/test_reports/regression/r14_setup.py",
+    "/app/test_reports/pytest/round14.xml"
+  ],
+  "action_items": [
+    "Subscribe to the 'notes:changed' socket event in NotesModal (or Drivers page) and reload notes when driverId matches, so 'Seen' updates live",
+    "Return 400 for non-numeric :id / :noteId in notesController (sendDriverNote, getDriverNotes, markMyNoteRead) instead of 500",
+    "Optional: reject non-image arrival photos with a 400 instead of silently dropping; consider warning if stop odometer < trip startOdometer",
+    "Optional: clear module-level notes cache (services/notes.ts `current`) on logout so a different driver on the same device never briefly sees previous driver's notes"
+  ],
+  "critical_code_review_comments": [
+    "notesController: markMyNoteRead scopes the update by driverId, so another driver cannot acknowledge James's note. Verified: Maria's call left the note unread.",
+    "files.ts driverOwns: verified Maria gets 403 on James's stop photo and on another driver's trip photo, and gets 200 on her own. A path traversal attempt returned 403.",
+    "StopsCard ArriveButton offline message says the arrival 'is recorded when you end the trip', but the optional odometer and photo entered in the panel are lost in that path.",
+    "getDriverTrips without days returns no photos and at most 10 trips. With days=30 it includes photos and a limit of 200. Both verified."
+  ],
+  "updated_files": [
+    "/app/test_reports/regression/test_round14_notes_history_stopproof.py (new)",
+    "/app/test_reports/regression/r14_setup.py (new helper)"
+  ],
+  "success_rate": {"backend": "94% (16/17)", "frontend": "95% (all flows pass; one live-update gap)"},
+  "seed_data_creation": "Created TEST_ notes for James (ids 2, 3, 4), all acknowledged; note 1 'Test note' is left unread. Created TEST_ trip 30 for James, now cancelled because there is no delete endpoint. Created TEST_ stops 45-49, all cleared. Michael's trip was not touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use r14_setup.py: 'setup' starts a TEST_ trip for James and adds 2 stops at 33.4497,-111.9464; 'note <msg>' sends a note; 'ack <prefix>' acknowledges a note as James; 'cleanup' cancels the active trip and clears stops. In the driver app the Home and ActiveTrip screens are both mounted, so testIDs appear twice; use the '>> visible=true' selector. Set Playwright geolocation to the stop coordinates before tapping Confirm arrival. The web ImagePicker opens a file chooser, so use expect_file_chooser. Skip the privacy notice with add_init_script localStorage 'privacyNoticeSeen:v1'. Set dashboard dark mode with localStorage 'theme'='dark'.",
+  "rca_of_issue": "Seen status is not live: notesController emits io.to('dashboard').emit('notes:changed', {driverId}) in markMyNoteRead and sendDriverNote, but web-dashboard/src has no socket.on('notes:changed') handler, and NotesModal only calls load() on mount and after send."
+}

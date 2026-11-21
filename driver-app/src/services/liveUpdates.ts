@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { io, Socket } from 'socket.io-client';
 import { getStops, setStopsLocal } from './offlineTrips';
+import { fetchNotes, setNotesLocal } from './notes';
 
 /**
  * A live line to the server while the app is open, so the stops the
@@ -51,8 +52,10 @@ export const startLiveUpdates = (driverId: number | null): (() => void) => {
     if (reason === 'io server disconnect') setTimeout(refreshThenReconnect, 1000);
   });
   // Back online after a gap: fetch once in case an update was missed.
+  socket.on('notes:updated', setNotesLocal);
   socket.on('connect', () => {
     getStops();
+    fetchNotes();
   });
 
   return () => {

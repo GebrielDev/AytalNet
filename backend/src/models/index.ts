@@ -5,6 +5,7 @@ import Trip from './Trip';
 import TripPhoto from './TripPhoto';
 import PasswordResetToken from './PasswordResetToken';
 import DriverStop from './DriverStop';
+import DriverNote from './DriverNote';
 
 // Define associations
 Trip.belongsTo(Driver, { foreignKey: 'driverId', as: 'driver' });
@@ -21,4 +22,7 @@ Trip.hasMany(TripPhoto, { foreignKey: 'tripId', as: 'photos' });
 DriverStop.belongsTo(Driver, { foreignKey: 'driverId', as: 'driver' });
 Driver.hasMany(DriverStop, { foreignKey: 'driverId', as: 'stops' });
 
-export { User, Driver, Vehicle, Trip, TripPhoto, PasswordResetToken, DriverStop };
+DriverNote.belongsTo(Driver, { foreignKey: 'driverId', as: 'driver' });
+Driver.hasMany(DriverNote, { foreignKey: 'driverId', as: 'notes' });
+
+export { User, Driver, Vehicle, Trip, TripPhoto, PasswordResetToken, DriverStop, DriverNote };

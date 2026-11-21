@@ -135,12 +135,14 @@ export const vehiclesApi = {
   getMyDestination: () => api.get('/drivers/my-destination'),
   getMyStops: () => api.get('/drivers/my-stops'),
   updateMyLocation: (latitude: number, longitude: number) => api.post('/drivers/my-location', { latitude, longitude }),
-  arriveAtStop: (stopId: number, latitude: number, longitude: number) => api.post(`/drivers/my-stops/${stopId}/arrive`, { latitude, longitude }),
+  // Multipart: latitude, longitude and the optional odometer reading and photo.
+  arriveAtStop: (stopId: number, formData: FormData) =>
+    api.post(`/drivers/my-stops/${stopId}/arrive`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 };
 
 export const tripsApi = {
   getActiveTrip: () => api.get('/trips/my-active'),
-  getMyTrips: () => api.get('/trips/my-trips'),
+  getMyTrips: (days?: number) => api.get('/trips/my-trips', { params: days ? { days } : undefined }),
   // Multipart: a trip is created together with its required photographs in a
   // single request, so a failed photo upload cannot leave a trip stranded.
   start: (formData: FormData) =>
@@ -152,6 +154,11 @@ export const tripsApi = {
     api.post(`/trips/${tripId}/photos`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
+};
+
+export const notesApi = {
+  getMine: () => api.get('/drivers/my-notes'),
+  markRead: (id: number) => api.post(`/drivers/my-notes/${id}/read`),
 };
 
 export default api;

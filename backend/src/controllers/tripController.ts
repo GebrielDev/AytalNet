@@ -275,7 +275,7 @@ type StartPhoto = (typeof START_PHOTO_FIELDS)[number];
  */
 type StoredPhoto = { photoUrl: string; publicId: string | null; objectPath?: string | null };
 
-const storePhoto = async (file: Express.Multer.File, req: Request): Promise<StoredPhoto> => {
+export const storePhoto = async (file: Express.Multer.File, req: Request): Promise<StoredPhoto> => {
   try {
     if (usesEmergentStorage()) {
       const { photoUrl, objectPath } = await storePhotoInEmergent(file, req);
@@ -776,13 +776,21 @@ export const getDriverActiveTrip = async (req: Request, res: Response): Promise<
 export const getDriverTrips = async (req: Request, res: Response): Promise<void> => {
   try {
     const driver = req.driver!;
+    // ?days=30 is the driver's trip history (with photos); without it, the
+    // last 10 trips for Home.
+    const days = Math.min(Number(req.query.days) || 0, 365);
     const trips = await Trip.findAll({
-      where: { driverId: driver.id, status: 'completed' },
+      where: {
+        driverId: driver.id,
+        status: 'completed',
+        ...(days > 0 ? { endTime: { [Op.gte]: new Date(Date.now() - days * 86400000) } } : {}),
+      },
       include: [
         { model: Vehicle, as: 'vehicle', attributes: ['id', 'plateNumber', 'make', 'model'] },
+        ...(days > 0 ? [{ model: TripPhoto, as: 'photos', attributes: ['id', 'photoType', 'photoUrl'] }] : []),
       ],
       order: [['endTime', 'DESC']],
-      limit: 10,
+      limit: days > 0 ? 200 : 10,
     });
     res.json(trips);
   } catch (error) {

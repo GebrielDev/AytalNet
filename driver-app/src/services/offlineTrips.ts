@@ -137,7 +137,7 @@ const removePhoto = (uri?: string) => {
   }
 };
 
-const appendPhoto = async (formData: FormData, field: string, uri: string, name: string) => {
+export const appendPhoto = async (formData: FormData, field: string, uri: string, name: string) => {
   if (Platform.OS === 'web') {
     const blob = await (await fetch(uri)).blob();
     formData.append(field, blob, name);
@@ -364,6 +364,8 @@ export interface Stop {
   address: string;
   note: string | null;
   arrivedAt: string | null;
+  arrivedOdometer?: number | null;
+  arrivedPhotoUrl?: string | null;
 }
 
 const stopListeners = new Set<(stops: Stop[]) => void>();

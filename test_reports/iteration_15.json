@@ -1,0 +1,31 @@
+{
+  "summary": "Retest of the iteration 14 action items. All 4 items pass. (1) Dashboard NotesModal, tested at 1920x1080 as admin with driver-note-3 open: a note sent through the API appeared live, and after James acknowledged it the item changed from 'Not seen yet' to 'Seen 7:27:43 AM' within 3 seconds without reopening the modal. (2) Non-numeric ids return 400 with {error:'Invalid driver id'} or {error:'Invalid note id'}. This covers GET and POST /drivers/abc/notes, the ids '3abc', '1.5' and '-1', and POST /drivers/my-notes/abc/read. An unknown numeric driver still returns 404. (3) Regression in the driver app at 390x844: note 8 showed on James's Active Trip, Got it removed it, and readAt was set. A second note (9) appeared live over the socket. James then logged out from Home and Michael logged in. Michael's Active Trip showed no notes, both immediately (250ms) and after 3 seconds. Maria cannot acknowledge James's note. (4) StopsCard.tsx:111 offline text now reads '...the arrival (without the reading and photo) is also recorded if you end the trip here.' This is accurate. Backend: 26/26 pass (round 15 and round 14 suites). Deprecated packages: none in scope this round.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/regression/test_round15_notes_ids.py",
+    "/app/test_reports/regression/test_round14_notes_history_stopproof.py",
+    "/app/test_reports/pytest/round15.xml"
+  ],
+  "action_items": [
+    "Optional: the NotesModal socket has no reconnect when the server closes it at token expiry ('io server disconnect'), unlike ArrivalNotices.tsx. If the modal stays open past token expiry, live 'Seen' updates stop silently. Low impact because the modal is short-lived.",
+    "Optional (carried over from iteration 14): reject non-image arrival photos with a 400 instead of dropping them silently; warn if the stop odometer is lower than the trip's startOdometer"
+  ],
+  "critical_code_review_comments": [
+    "NotesModal opens a second dashboard socket next to ArrivalNotices. This works, but one shared socket or context would avoid duplicate connections.",
+    "notesController validId uses /^\\d+$/, so '-1' and '1.5' are rejected with 400. This is intended. markMyNoteRead for an unknown numeric id returns 200 with the unread list. This is acceptable and idempotent.",
+    "AuthContext.logout calls setNotesLocal([]). Verified that no stale notes show for the next driver."
+  ],
+  "updated_files": ["/app/test_reports/regression/test_round15_notes_ids.py (new)"],
+  "success_rate": {"backend": "100% (26/26)", "frontend": "100% (all 3 UI flows)"},
+  "seed_data_creation": "Created TEST_ notes for James (ids 5-9), all acknowledged. Created TEST_ trip 31 for James, now cancelled. Stops were added and then cleared. Note 1 'Test note' was left unread and untouched. Michael's trip 6 is still in_progress and was not modified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Driver app: after login it lands on Home even when a trip is active. Tap home-active-trip-banner to open ActiveTrip, where NotesCard lives. To get back from ActiveTrip, use the header back arrow ([aria-label*='back' i] >> visible=true). Do not use page.go_back(), because it leaves the app. Use the r14_setup.py helpers (setup, note, ack, cleanup).",
+  "rca_of_issue": ""
+}

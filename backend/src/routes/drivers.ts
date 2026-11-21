@@ -1,6 +1,15 @@
 import { Router } from 'express';
 import { getAllDrivers, getDriverById, createDriver, updateDriver, deleteDriver, assignVehicle, getMyAssignedVehicle, setDriverDestination, getMyDestination, setDriverStops, getDriverStops, getMyStops, arriveAtStop, getStopsBoard, updateMyLocation } from '../controllers/driverController';
+import { sendDriverNote, getDriverNotes, getMyNotes, markMyNoteRead } from '../controllers/notesController';
 import { authenticateToken, requireUser, requireDriver } from '../middleware/auth';
+import multer from 'multer';
+
+// Optional odometer photo sent with an arrival.
+const arrivalPhoto = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => cb(null, ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.mimetype)),
+}).single('photo');
 
 const router = Router();
 
@@ -9,7 +18,9 @@ router.get('/my-vehicle', authenticateToken, requireDriver, getMyAssignedVehicle
 router.get('/my-destination', authenticateToken, requireDriver, getMyDestination);
 router.get('/my-stops', authenticateToken, requireDriver, getMyStops);
 router.post('/my-location', authenticateToken, requireDriver, updateMyLocation);
-router.post('/my-stops/:stopId/arrive', authenticateToken, requireDriver, arriveAtStop);
+router.post('/my-stops/:stopId/arrive', authenticateToken, requireDriver, arrivalPhoto, arriveAtStop);
+router.get('/my-notes', authenticateToken, requireDriver, getMyNotes);
+router.post('/my-notes/:noteId/read', authenticateToken, requireDriver, markMyNoteRead);
 
 router.use(authenticateToken, requireUser);
 
@@ -22,6 +33,8 @@ router.put('/:id/assign-vehicle', assignVehicle);
 router.put('/:id/destination', setDriverDestination);
 router.get('/:id/stops', getDriverStops);
 router.put('/:id/stops', setDriverStops);
+router.get('/:id/notes', getDriverNotes);
+router.post('/:id/notes', sendDriverNote);
 router.delete('/:id', deleteDriver);
 
 export default router;

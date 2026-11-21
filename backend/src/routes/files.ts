@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { readPhoto } from '../config/photoStorage';
-import { authenticateToken, requireUser } from '../middleware/auth';
+import { Op } from 'sequelize';
+import { authenticateToken } from '../middleware/auth';
+import { Trip, TripPhoto, DriverStop } from '../models';
 
 const router = Router();
 
@@ -11,9 +13,22 @@ const router = Router();
  * dashboard fetches these with its bearer token (see AuthImage) rather than
  * pointing an <img> straight at them.
  */
-router.get(/^\/(sts-fleet\/trips\/[^/]+)$/, authenticateToken, requireUser, async (req, res) => {
+// A driver may open only photos from their own trips and stops.
+const driverOwns = async (driverId: number, objectPath: string): Promise<boolean> => {
+  const like = { [Op.like]: `%/files/${objectPath}` };
+  const trip = await TripPhoto.findOne({ where: { photoUrl: like }, include: [{ model: Trip, as: 'trip', where: { driverId }, attributes: [] }], attributes: ['id'] });
+  if (trip) return true;
+  return !!(await DriverStop.findOne({ where: { driverId, arrivedPhotoUrl: like }, attributes: ['id'] }));
+};
+
+router.get(/^\/(sts-fleet\/trips\/[^/]+)$/, authenticateToken, async (req, res) => {
   try {
-    const photo = await readPhoto((req.params as unknown as string[])[0]);
+    const objectPath = (req.params as unknown as string[])[0];
+    if (!req.user && !(req.driver && (await driverOwns(req.driver.id, objectPath)))) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+    const photo = await readPhoto(objectPath);
     if (!photo) {
       res.status(404).json({ error: 'Photo not found' });
       return;

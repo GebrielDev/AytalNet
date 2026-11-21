@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import { driversApi } from '../services/api';
 import StopsModal from '../components/StopsModal';
 import BoardMap, { type MapRow } from '../components/BoardMap';
+import AuthImage from '../components/AuthImage';
 
 interface BoardStop {
   id: number;
@@ -13,6 +14,8 @@ interface BoardStop {
   longitude: number | null;
   arrivedAt: string | null;
   arrivedDistanceMeters: number | null;
+  arrivedOdometer?: number | null;
+  arrivedPhotoUrl?: string | null;
 }
 
 interface BoardRow {
@@ -237,7 +240,11 @@ export default function StopsBoard() {
                         <span className="min-w-0">
                           <span className={`block truncate ${s.arrivedAt ? 'text-gray-400 line-through' : s.id === nextId ? 'text-gray-900 font-medium' : 'text-gray-600'}`}>{s.address}</span>
                           {s.arrivedAt ? (
-                            <span className="text-xs text-green-700">Arrived {time(s.arrivedAt)}{s.arrivedDistanceMeters != null ? ` · ${s.arrivedDistanceMeters} m` : ''}</span>
+                            <span className="block text-xs text-green-700">
+                              Arrived {time(s.arrivedAt)}{s.arrivedDistanceMeters != null ? ` · ${s.arrivedDistanceMeters} m` : ''}
+                              {s.arrivedOdometer != null ? <span className="text-gray-700" data-testid={`board-stop-odometer-${s.id}`}> · Odometer {s.arrivedOdometer} mi</span> : null}
+                              {s.arrivedPhotoUrl ? <AuthImage src={s.arrivedPhotoUrl} alt="Odometer at stop" className="mt-1 w-16 h-16 object-cover rounded-md border border-gray-200" testId={`board-stop-photo-${s.id}`} /> : null}
+                            </span>
                           ) : s.id === nextId ? (
                             <span className="text-xs text-blue-700">Next stop{s.latitude == null ? ' · not on the map' : ''}</span>
                           ) : s.latitude == null ? (

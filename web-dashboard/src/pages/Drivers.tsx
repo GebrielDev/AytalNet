@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { driversApi, vehiclesApi } from '../services/api';
 import StopsModal from '../components/StopsModal';
+import NotesModal from '../components/NotesModal';
 
 interface Vehicle {
   id: number;
@@ -29,6 +30,7 @@ export default function Drivers() {
   const [showModal, setShowModal] = useState(false);
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
   const [destinationFor, setDestinationFor] = useState<Driver | null>(null);
+  const [noteFor, setNoteFor] = useState<Driver | null>(null);
   const [form, setForm] = useState({ employeeId: '', name: '', email: '', phone: '', password: '', licenseNumber: '' });
 
   useEffect(() => {
@@ -187,6 +189,7 @@ export default function Drivers() {
                     </span>
                   </td>
                   <td className="px-5 py-3.5 text-sm space-x-2">
+                    <button data-testid={`driver-note-${driver.id}`} onClick={() => setNoteFor(driver)} className="text-blue-600 hover:text-blue-800 font-medium">Note</button>
                     <button onClick={() => handleEdit(driver)} className="text-blue-600 hover:text-blue-800 font-medium">Edit</button>
                     <button onClick={() => handleDelete(driver.id)} className="text-red-600 hover:text-red-800 font-medium">Deactivate</button>
                   </td>
@@ -237,6 +240,7 @@ export default function Drivers() {
             </div>
             <div className="flex gap-3 pt-1">
               <button data-testid={`driver-destination-mobile-${driver.id}`} onClick={() => setDestinationFor(driver)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">{driver.destinationAddress ? 'Stops' : 'Add stops'}</button>
+              <button data-testid={`driver-note-mobile-${driver.id}`} onClick={() => setNoteFor(driver)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Note</button>
               <button onClick={() => handleEdit(driver)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Edit</button>
               <button onClick={() => handleDelete(driver.id)} className="text-xs text-red-600 hover:text-red-800 font-medium">Deactivate</button>
             </div>
@@ -290,6 +294,9 @@ export default function Drivers() {
       )}
       {destinationFor && (
         <StopsModal driver={destinationFor} onClose={() => setDestinationFor(null)} onSaved={fetchDrivers} />
+      )}
+      {noteFor && (
+        <NotesModal driver={noteFor} onClose={() => setNoteFor(null)} />
       )}
     </div>
   );

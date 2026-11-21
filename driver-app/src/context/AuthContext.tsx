@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { setNotesLocal } from '../services/notes';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authApi, setOnSessionEnded, invalidateSession } from '../services/api';
 import { startOfflineSync, clearOfflineCache } from '../services/offlineTrips';
@@ -84,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     invalidateSession();
     await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
     await clearOfflineCache();
+    setNotesLocal([]);
     setDriver(null);
   };
 

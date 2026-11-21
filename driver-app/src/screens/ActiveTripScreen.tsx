@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, ScrollView }
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useStyles, type Palette } from '../theme';
 import StopsCard from '../components/StopsCard';
+import NotesCard from '../components/NotesCard';
 import { useTripTracking } from '../hooks/useTripTracking';
 import { getStops, subscribeToStops, type Stop } from '../services/offlineTrips';
 
@@ -75,6 +76,8 @@ export default function ActiveTripScreen() {
           <Text style={styles.infoSub}>{trip.vehicle.make} {trip.vehicle.model}</Text>
         )}
       </View>
+
+      <NotesCard />
 
       <StopsCard stops={stops} />
 

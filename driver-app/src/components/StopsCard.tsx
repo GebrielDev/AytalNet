@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Linking, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Linking, Platform, ActivityIndicator, TextInput, Image } from 'react-native';
 import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
 import { useColors, useStyles, type Palette } from '../theme';
 import { vehiclesApi } from '../services/api';
-import { setStopsLocal, type Stop } from '../services/offlineTrips';
+import { setStopsLocal, appendPhoto, type Stop } from '../services/offlineTrips';
 
 const encode = (address: string) => encodeURIComponent(address);
 
@@ -52,14 +53,42 @@ function NavigateButton({ stop, primary }: { stop: Stop; primary: boolean }) {
   );
 }
 
-/** "I've arrived": checked against the phone's location by the server. */
+/**
+ * "I've arrived": checked against the phone's location by the server. The
+ * driver can add the odometer reading and its photo first (optional).
+ */
 function ArriveButton({ stop }: { stop: Stop }) {
   const styles = useStyles(makeStyles);
   const c = useColors();
+  const [open, setOpen] = useState(false);
+  const [odometer, setOdometer] = useState('');
+  const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
+  const takePhoto = async () => {
+    setMessage('');
+    const perm = await ImagePicker.getCameraPermissionsAsync();
+    if (!perm.granted) {
+      if (!perm.canAskAgain) {
+        setMessage('Camera is off for this app. Turn it on in Settings to add a photo.');
+        return;
+      }
+      if (!(await ImagePicker.requestCameraPermissionsAsync()).granted) {
+        setMessage('Camera is needed to photograph the odometer. You can still confirm without it.');
+        return;
+      }
+    }
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7 });
+    if (!result.canceled) setPhoto(result.assets[0].uri);
+  };
+
   const arrive = async () => {
+    const reading = odometer.trim();
+    if (reading && !(Number.isFinite(Number(reading)) && Number(reading) >= 0)) {
+      setMessage('Enter the odometer reading as a number, for example 10432');
+      return;
+    }
     setBusy(true);
     setMessage('');
     try {
@@ -69,22 +98,60 @@ function ArriveButton({ stop }: { stop: Stop }) {
         return;
       }
       const position = await Location.getCurrentPositionAsync({});
-      const res = await vehiclesApi.arriveAtStop(stop.id, position.coords.latitude, position.coords.longitude);
+      const form = new FormData();
+      form.append('latitude', String(position.coords.latitude));
+      form.append('longitude', String(position.coords.longitude));
+      if (reading) form.append('odometer', reading);
+      if (photo) await appendPhoto(form, 'photo', photo, `stop-${stop.id}-odometer.jpg`);
+      const res = await vehiclesApi.arriveAtStop(stop.id, form);
       await setStopsLocal(res.data.stops);
     } catch (error: any) {
       setMessage(
         error?.response?.data?.error ||
-          (error?.response ? 'Could not confirm arrival.' : 'No signal. Try again, or it is recorded when you end the trip here.')
+          (error?.response ? 'Could not confirm arrival.' : 'No signal. Try again when you have signal - the arrival (without the reading and photo) is also recorded if you end the trip here.')
       );
     } finally {
       setBusy(false);
     }
   };
 
+  if (!open) {
+    return (
+      <TouchableOpacity style={styles.arrive} onPress={() => setOpen(true)} testID={`arrive-button-${stop.id}`}>
+        <Text style={styles.arriveText}>I've arrived</Text>
+      </TouchableOpacity>
+    );
+  }
+
   return (
-    <View>
-      <TouchableOpacity style={styles.arrive} onPress={arrive} disabled={busy} testID={`arrive-button-${stop.id}`}>
-        {busy ? <ActivityIndicator color={c.successText} /> : <Text style={styles.arriveText}>I've arrived</Text>}
+    <View style={styles.proof} testID={`arrive-panel-${stop.id}`}>
+      <Text style={styles.proofLabel}>Odometer at this stop (optional)</Text>
+      <TextInput
+        style={styles.input}
+        value={odometer}
+        onChangeText={setOdometer}
+        keyboardType="numeric"
+        placeholder="e.g. 10432"
+        placeholderTextColor={c.placeholder}
+        testID={`arrive-odometer-${stop.id}`}
+      />
+      {photo ? (
+        <View style={styles.photoRow}>
+          <Image source={{ uri: photo }} style={styles.photo} />
+          <TouchableOpacity style={styles.smallBtn} onPress={takePhoto} testID={`arrive-retake-${stop.id}`}>
+            <Text style={styles.navigateSmallText}>Retake</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity style={styles.navigateSmall} onPress={takePhoto} testID={`arrive-photo-${stop.id}`}>
+          <Text style={styles.navigateSmallText}>Take odometer photo (optional)</Text>
+        </TouchableOpacity>
+      )}
+      <TouchableOpacity style={styles.confirm} onPress={arrive} disabled={busy} testID={`arrive-confirm-${stop.id}`}>
+        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmText}>Confirm arrival</Text>}
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.cancel} onPress={() => setOpen(false)} disabled={busy} testID={`arrive-cancel-${stop.id}`}>
+        <Text style={styles.cancelText}>Cancel</Text>
       </TouchableOpacity>
       {message ? <Text style={styles.error} testID={`arrive-message-${stop.id}`}>{message}</Text> : null}
     </View>
@@ -120,7 +187,7 @@ export default function StopsCard({ stops }: { stops: Stop[] }) {
                   {stop.address}
                 </Text>
                 {stop.note ? <Text style={styles.note}>{stop.note}</Text> : null}
-                {stop.arrivedAt ? <Text style={styles.doneText}>Arrived</Text> : null}
+                {stop.arrivedAt ? <Text style={styles.doneText}>{'Arrived' + (stop.arrivedOdometer != null ? ` · ${stop.arrivedOdometer} mi` : '') + (stop.arrivedPhotoUrl ? ' · photo' : '')}</Text> : null}
               </View>
             </View>
             {!stop.arrivedAt ? (
@@ -152,7 +219,15 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   addressNext: { fontSize: 17, fontWeight: '700', color: c.text },
   addressDone: { color: c.textMuted, textDecorationLine: 'line-through' },
   note: { fontSize: 13, color: c.textMuted, marginTop: 2 },
-  doneText: { fontSize: 12, color: '#16a34a', fontWeight: '600', marginTop: 2 },
+  doneText: { fontSize: 12, color: c.successText, fontWeight: '600', marginTop: 2 },
+  proof: { gap: 8, backgroundColor: c.successSoft, borderRadius: 12, padding: 12 },
+  proofLabel: { fontSize: 13, fontWeight: '600', color: c.textSoft },
+  input: { minHeight: 48, borderWidth: 1, borderColor: c.borderStrong, borderRadius: 12, paddingHorizontal: 14, fontSize: 17, color: c.text, backgroundColor: c.card },
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  photo: { width: 64, height: 64, borderRadius: 10 },
+  smallBtn: { minHeight: 44, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: c.borderStrong, justifyContent: 'center' },
+  confirm: { minHeight: 52, borderRadius: 12, backgroundColor: c.success, alignItems: 'center', justifyContent: 'center' },
+  confirmText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   actions: { marginTop: 10, marginLeft: 36, gap: 8 },
   navigate: { backgroundColor: c.inverse, minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   navigateText: { color: c.onInverse, fontSize: 16, fontWeight: '700' },
