@@ -1,0 +1,45 @@
+{
+  "summary": "Smoke test of the rebuilt preview (Postgres 15, fleet-test-api on 8002, new preview-proxy.js on 8001). Almost everything works. Backend pytest: 16/17 pass in test_round29_preview_proxy.py. Driver app (390x844): james logs in. Home shows 'STOPS · 2 TO GO' and the active trip banner. Active Trip shows the seeded note with 4 reply buttons. Tapping 'On my way' made a dashboard toast appear live, and the Notes modal showed the reply. Trip History shows 5 trips and 188.0 mi, and all 20 photo thumbnails loaded. A note sent from the dashboard Notes modal appeared on the driver's Active Trip without a reload. socket.io over /api/socket.io works for both the '/' and '/driver' namespaces in websocket, polling and default (upgraded to websocket) modes. Dashboard: login works, a hard load of the /api/dashboard/stops deep link returns index.html (200), the Stops board shows James at 2/4, and both odometer photos load. Path traversal is blocked: raw, %2e%2e, %2f and %5c variants, sent both locally and through the public URL, never return .env or passwd, only index.html. One HIGH issue: a single unauthenticated request with bad percent-encoding crashes the proxy.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/dashboard/<malformed %-encoding> (e.g. /api/dashboard/%FF, /api/dashboard/%C0%AF, /api/dashboard/%ED%A0%80)", "issue": "Anyone can crash the proxy with one unauthenticated request (DoS). preview-proxy.js:16 calls decodeURIComponent with no try/catch. It throws URIError, Node exits, and the public URL returns 502. Supervisor restarts it within about 1-2 s, but every live socket.io connection and every request in flight is dropped. Reproduced through the public URL: the proxy pid changed on every hit. The ingress rejects some malformed escapes (e.g. %zz, %E0%A4%A with 400), but %FF and %C0%AF get through.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/dashboard/assets/<missing>.js", "issue": "A missing file with an extension returns index.html as 200 text/html. A browser holding an old index.html after a rebuild then gets HTML for a hashed JS file and shows a blank page (MIME error). Return 404 for missing paths that have a file extension and use the SPA fallback only for extension-less routes."},
+      {"endpoint": "preview-proxy.js:18 / :24", "issue": "file.startsWith(DIST) does not check for a path separator, so a sibling folder such as dist-old would pass. req.url.startsWith('/api/dashboard') also matches /api/dashboardfoo. Not exploitable today."},
+      {"endpoint": "preview-proxy.js:20", "issue": "fs.createReadStream has no 'error' handler. If a file vanishes between existsSync and the read (for example during a dashboard rebuild), the proxy crashes."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Driver Trip History (store screenshots)", "issues": ["Odometer and mileage show trailing decimals: 'Odometer 48376.0 → 48410.0', '188.0 mi', '34.0 miles'. Whole-number formatting would look cleaner in store screenshots."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_round29_preview_proxy.py",
+    "/app/test_reports/pytest/round29.xml",
+    "/app/test_reports/regression/socket_round25_bridge.cjs"
+  ],
+  "action_items": [
+    "HIGH: in /app/scripts/preview-proxy.js serveDashboard, wrap decodeURIComponent in try/catch and return 400 on URIError. Also add a res/stream error guard so one bad request cannot exit the process. Retest with: curl https://<preview>/api/dashboard/%FF, then check that the fleet-preview-proxy pid is unchanged.",
+    "Minor: return 404 (not index.html) for missing /api/dashboard paths that have a file extension; use path.sep in the startsWith check; add an 'error' handler on createReadStream.",
+    "Optional cosmetic: format odometer and mileage in Trip History without '.0'."
+  ],
+  "critical_code_review_comments": [
+    "preview-proxy.js: path traversal is correctly blocked by path.join + path.normalize + the startsWith(DIST) fallback to index.html. Verified with encoded and raw '..' payloads.",
+    "Client IP / rate limiting through the new proxy: spoofed X-Forwarded-For headers (3 different IPs) all counted against the same driver-login:ip key. Express 'trust proxy'=1 takes the entry added by the ingress, so spoofing does not bypass the limit.",
+    "Upstream reset mid-response (simulated with a copy of the proxy against a fake upstream on 8061/8062) did not crash the proxy.",
+    "On web the driver app uses EXPO_PUBLIC_BACKEND_URL (readgit-app--8lddrvr9 host) for the API and socket, not the 162fb2ea host. Both reach the same container and the same proxy, so it works; just be aware when reading network logs.",
+    "The dashboard opens a separate socket.io connection per component (Dashboard, ArrivalNotices, StopsBoard, NotesModal); 5 websockets were seen in one session. This is not a bug, but one shared socket would be lighter."
+  ],
+  "updated_files": ["/app/backend/tests/test_round29_preview_proxy.py (new)"],
+  "success_rate": {"backend": "94% (16/17; the failure is the proxy crash on malformed URI)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "No seed data created. Temporary TEST_ notes (ids 3, 4, 5, 6) were deleted by id. Seeded note id 2 was replied to 'On my way' during the test and was then restored to unread with no reply (read_at, reply, replied_at = null, updated_at = created_at). James still has 5 completed trips, 1 in_progress trip and 2/4 stops done. auth_rate_limits cleared.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Preview stack: fleet-test-api (8002) and fleet-preview-proxy (8001). Do NOT start supervisor 'backend'. test_round29_preview_proxy.py::test_malformed_uri_does_not_crash_proxy sends /api/dashboard/%FF and compares the proxy pid from supervisorctl; until it is fixed, that test crashes and restarts the proxy, so wait about 3 s after it. Socket check: BASE=<preview> ADMIN=<token> DRIVER=<james token> MODE=websocket|polling|default node /app/test_reports/regression/socket_round25_bridge.cjs (creates TEST_ notes; delete them by id afterwards). Driver app: tap privacy-notice-ok, then log in. Note reply testID: note-reply-<id>-on-my-way. Dashboard Notes: driver-note-3 → notes-input / notes-send-button; reply toast: reply-notice-<noteId>. Restore seeded note 2 with: update driver_notes set read_at=null, reply=null, replied_at=null, updated_at=created_at where id=2.",
+  "rca_of_issue": "Proxy crash: serveDashboard() runs decodeURIComponent(req.url...) synchronously inside the http request handler. Invalid UTF-8 percent sequences make it throw URIError, nothing catches it, and Node exits. Repro: curl -s https://162fb2ea-1243-4414-ad3a-72d383847f45.preview.emergentagent.com/api/dashboard/%FF returns 502, and supervisorctl status fleet-preview-proxy shows STARTING with a new pid. Fix: let rel; try { rel = decodeURIComponent(...) } catch { res.writeHead(400); return res.end('Bad request'); }"
+}

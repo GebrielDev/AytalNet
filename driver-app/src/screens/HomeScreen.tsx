@@ -168,7 +168,7 @@ export default function HomeScreen() {
         </TouchableOpacity>
         {recentTrips.length > 0 ? (
           <Text style={styles.totalMiles} testID="home-history-total-miles">
-            {recentTrips.reduce(function (sum: number, t: any) { return sum + (Number(t.totalMileage) || 0); }, 0).toFixed(1) + ' mi · last ' + recentTrips.length + ' trips'}
+            {recentTrips.reduce(function (sum: number, t: any) { return sum + (Number(t.totalMileage) || 0); }, 0).toFixed(1).replace(/\.0$/, '') + ' mi · last ' + recentTrips.length + ' trips'}
           </Text>
         ) : null}
       </View>
@@ -203,7 +203,7 @@ export default function HomeScreen() {
           var dur = '-';
           if (t.durationMinutes != null) { dur = t.durationMinutes + ' min'; }
           var miles = '-';
-          if (t.totalMileage != null) { miles = Number(t.totalMileage).toFixed(1); }
+          if (t.totalMileage != null) { miles = Number(t.totalMileage).toFixed(1).replace(/\.0$/, ''); }
 
           var rowStyle = i % 2 === 0 ? styles.rowEven : styles.rowOdd;
           var key = t.id ? String(t.id) : String(i);

@@ -1,0 +1,22 @@
+{
+  "summary": "Retest of the iteration_29 HIGH proxy crash. Fixed and verified through the public URL. These now return 400: /api/dashboard/%FF, %C0%AF, %E0%A4%A, a bare %, assets/%FF.js and %FF?x=1. A burst of 10 malformed requests does the same. The fleet-preview-proxy pid stayed 6988 for the whole run. Missing /api/dashboard/assets/missing.{js,css,map,png,svg,ico,json} return 404, not index.html. SPA deep links (/stops, /drivers/3, /api/dashboard, ?x=1, /assets) return index.html with 200. All index.html js/css assets load with the correct content-type. Eight path traversal variants (%2e%2e, %2f, %5c, %00, sibling directory, package.json) leak nothing. /api/dashboardfoo now goes to the API instead of the dashboard. pytest: test_round29_preview_proxy.py 17/17 and the new test_round30_proxy_hardening.py 30/30, 47/47 total. Live sockets through the proxy work: the dashboard note reached the driver and the reply reached the dashboard in websocket, polling and default (upgraded to websocket) modes. Driver app Trip History for james shows 'Odometer 48376 → 48410', '34 miles' and a '188 mi' total, with no '.0' anywhere. Minor leftover: the Home screen still shows '188.0 mi · last 5 trips' and '34.0' on the recent-trip cards.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "HomeScreen recent trips", "issue": "Home still formats mileage with toFixed(1): '188.0 mi · last 5 trips' and '34.0' on the recent-trip cards. This does not match Trip History ('188 mi', '34'). Reference: /app/driver-app/src/screens/HomeScreen.tsx:171 and :206", "testID": "home-history-total-miles / home-completed-trip-17", "priority": "low"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_round29_preview_proxy.py", "/app/backend/tests/test_round30_proxy_hardening.py", "/app/test_reports/pytest/pytest_round30.xml", "/app/test_reports/regression/socket_round25_bridge.cjs"],
+  "action_items": ["Optional cosmetic: reuse the TripHistoryScreen num() helper in HomeScreen.tsx lines 171 and 206 so Home shows '188 mi' and '34' instead of '188.0' and '34.0'."],
+  "critical_code_review_comments": ["preview-proxy.js handles bad input safely: URIError returns 400, the path.sep containment check works, missing assets with extensions return 404, and the read stream has an error handler. Minor: the res socket has no 'error' listener, but Node's http server already handles client resets, so nothing needs to change."],
+  "updated_files": ["/app/backend/tests/test_round30_proxy_hardening.py (new)"],
+  "success_rate": {"backend": "100% (47/47)", "frontend": "100% for the requested checks; 1 low-priority cosmetic issue on the Home screen"},
+  "seed_data_creation": "None kept. The socket test created TEST_ notes 7, 8 and 9, which were deleted by id. Seeded note 2 is untouched (read_at, reply and replied_at all null). James still has 6 trips. auth_rate_limits was cleared (4 rows).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Preview stack: fleet-test-api (8002) and fleet-preview-proxy (8001). Do NOT start supervisor 'backend'. Python requests re-quotes invalid '%' sequences to '%25', so send malformed-URI tests over raw http.client (see test_round30). Postgres DATABASE_URL is in /app/backend/.env. Socket check: socket_round25_bridge.cjs with BASE/ADMIN/DRIVER/MODE; afterwards delete the TEST_ notes it creates, by id.",
+  "rca_of_issue": "Iteration 29 HIGH: decodeURIComponent threw a URIError on %FF, nothing caught it, and the proxy process exited. Now fixed with try/catch that returns 400. Verified that the pid did not change."
+}

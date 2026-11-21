@@ -14,6 +14,8 @@ const PHOTO_LABELS: Record<string, string> = {
 };
 const ORDER = ['start_odometer', 'end_odometer', 'license_plate', 'driver_selfie', 'passenger'];
 
+// 48410 rather than 48410.0; keeps a real decimal (e.g. 25.4).
+const num = (n: unknown) => (n == null ? '-' : Number(n) % 1 === 0 ? String(Number(n)) : Number(n).toFixed(1));
 const date = (d: string) => new Date(d).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 const time = (d: string) => new Date(d).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
@@ -61,7 +63,7 @@ export default function TripHistoryScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={c.primary} />}
         ListHeaderComponent={
           <View style={styles.summary} testID="history-summary">
-            <Text style={styles.summaryValue}>{totalMiles.toFixed(1)} mi</Text>
+            <Text style={styles.summaryValue}>{num(Math.round(totalMiles * 10) / 10)} mi</Text>
             <Text style={styles.summaryLabel}>{trips.length} {trips.length === 1 ? 'trip' : 'trips'} in the last 30 days</Text>
             {error ? <Text style={styles.error} testID="history-error">{error}</Text> : null}
           </View>
@@ -78,11 +80,11 @@ export default function TripHistoryScreen() {
                   <Text style={styles.sub}>{t.vehicle?.plateNumber || 'Vehicle'}{t.vehicle?.make ? ` · ${t.vehicle.make} ${t.vehicle.model || ''}` : ''}</Text>
                 </View>
                 <View style={styles.miles}>
-                  <Text style={styles.milesValue}>{t.totalMileage != null ? Number(t.totalMileage).toFixed(1) : '-'}</Text>
+                  <Text style={styles.milesValue}>{num(t.totalMileage)}</Text>
                   <Text style={styles.milesLabel}>miles</Text>
                 </View>
               </View>
-              <Text style={styles.odo}>{`Odometer ${t.startOdometer ?? '-'} → ${t.endOdometer ?? '-'}`}</Text>
+              <Text style={styles.odo}>{`Odometer ${num(t.startOdometer)} → ${num(t.endOdometer)}`}</Text>
               {photos.length ? (
                 <View style={styles.photos}>
                   {photos.map((p: any) => (
