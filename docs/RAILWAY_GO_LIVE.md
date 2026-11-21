@@ -95,3 +95,26 @@ current code first (older code has no driver live-update channel).
   `FLEET_API_UPSTREAM=https://api.startechsolutions.us` (the default).
 With the shared secret, login attempt limits count each real caller instead of
 treating everyone behind the bridge as one address.
+
+## Step-by-step walkthrough (check after every step)
+Run `bash docs/check-go-live.sh` (see the top of the file for settings) after each step.
+On 21 Nov 2026 it reported: Railway up, but **on older code** (no driver live channel).
+
+1. **Back up** Postgres (Railway → Postgres → Backups → Create). Nothing to check yet.
+2. **Set backend variables** (Railway → backend → Variables): `PHOTO_STORAGE=emergent`,
+   `EMERGENT_LLM_KEY`, `PUBLIC_API_URL=https://api.startechsolutions.us`, and a new
+   `BRIDGE_SHARED_SECRET` (any long random text, e.g. from a password manager). Save — Railway redeploys.
+3. **Deploy the current backend code** (push the branch Railway watches, or Deploy → Redeploy latest).
+   Watch the deploy log for `Server running` and no `ALTER TABLE` errors.
+   ✔ Check: `Railway runs the 1.1.0 code` must now PASS.
+4. **Reviewer account**: Railway → backend → Shell →
+   `DEMO_DRIVER_PASSWORD='<strong password>' npm run demo:driver`.
+   ✔ Check: run the script with `DEMO_EMAIL` / `DEMO_PASSWORD` — sign-in and new endpoints PASS.
+5. **Dashboard**: set `VITE_API_URL=https://api.startechsolutions.us/api` on the web-dashboard service and redeploy.
+   ✔ Check by hand: sign in at the dashboard; Stops, Coverage and Corrections pages open.
+6. **Old photos**: Railway → backend → Shell → `npm run photos:migrate`.
+   ✔ Check by hand: open an old trip on the dashboard; its photos still show.
+7. **Emergent**: add the same `BRIDGE_SHARED_SECRET` (and `FLEET_API_UPSTREAM=https://api.startechsolutions.us`)
+   to the Emergent deployment secrets, then Publish / Redeploy.
+   ✔ Check: run the script with `BRIDGE=https://<your emergent app address>` — all bridge lines PASS.
+8. **Phones**: generate the 1.1.0 builds and follow `STORE_SUBMISSION_1.1.0.md`.

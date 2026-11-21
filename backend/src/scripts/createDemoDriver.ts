@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import sequelize from '../config/database';
-import { Driver, Vehicle } from '../models';
+import { Driver, DriverNote, Vehicle } from '../models';
 
 /**
  * Creates (or refreshes) the demo driver account handed to Google Play reviewers
@@ -61,6 +61,14 @@ const run = async (): Promise<void> => {
     driver.status = 'active';
     await driver.save();
     console.log(`Refreshed demo driver ${DEMO_EMAIL} (id ${driver.id})`);
+  }
+
+  // A message from the office, so reviewers can try the quick replies.
+  const welcome = 'Welcome! This is a message from the office — tap a reply below.';
+  const hasWelcome = await DriverNote.findOne({ where: { driverId: driver.id, message: welcome, readAt: null } });
+  if (!hasWelcome) {
+    await DriverNote.create({ driverId: driver.id, message: welcome, sentByName: 'STS Dispatch' });
+    console.log('Left a welcome message for the reviewer');
   }
 
   console.log('\n--- Credentials for Play Console > App access ---');
