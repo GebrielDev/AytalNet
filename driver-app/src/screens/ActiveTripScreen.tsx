@@ -79,7 +79,7 @@ export default function ActiveTripScreen() {
 
       <NotesCard />
 
-      <StopsCard stops={stops} />
+      <StopsCard stops={stops} startOdometer={trip.startOdometer != null ? Number(trip.startOdometer) : null} />
 
       <View style={styles.durationCard}>
         <Text style={styles.durationLabel}>Duration</Text>

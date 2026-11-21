@@ -109,6 +109,8 @@ export const connectDatabase = async (): Promise<void> => {
       'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS arrived_longitude DECIMAL(10,7);',
       'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS arrived_odometer DECIMAL(10,1);',
       'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS arrived_photo_url TEXT;',
+      'ALTER TABLE IF EXISTS driver_notes ADD COLUMN IF NOT EXISTS reply VARCHAR(100);',
+      'ALTER TABLE IF EXISTS driver_notes ADD COLUMN IF NOT EXISTS replied_at TIMESTAMPTZ;',
     ]) {
       try {
         await sequelize.query(statement);

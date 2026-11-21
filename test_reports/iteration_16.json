@@ -1,0 +1,48 @@
+{
+  "summary": "Round 16 tested three features: note quick replies, the odometer sanity check and offline stop proof. Backend: 11/11 new tests pass (test_round16_replies_arrival.py). The round 14 and 15 regression suites also pass (26/26). Quick replies: any value other than the four allowed ones returns 400. Another driver's note returns 404, and a non-numeric id returns 400 'Invalid note id'. A reply saves reply, repliedAt and readAt, keeps an existing readAt, and returns the unread list. The 'note:replied' socket event reaches the dashboard for 'On my way'. It is not sent for 'Got it', as intended. arrivedAt: a value 1h ago is used as given. A value 72h ago, or a garbage value, falls back to now. On a stop that is already arrived, the odometer and photo are attached when none is saved, and existing proof is never overwritten. Driver app (390x844): NotesCard shows 4 buttons, all 44px tall, and 'On my way' clears the note. Dashboard: the reply-notice-<id> popup shows at the bottom right with 'James Wilson: “Call me”' and can be dismissed. NotesModal shows '↩ “Call me” · time' and '↩ “On my way”' for note 17. Odometer check: 20010 against a trip start of 20015 shows a warning. After editing the number, Confirm warns again, and a second Confirm saves it. The next stop compares against stop 1's reading ('20011 is lower than stop 1 (20012)'). Offline arrival works with both context.set_offline and a route abort. The stop shows 'Arrived · waiting for signal · 20021 mi' and is still pending after a reload. Once sent, the server arrivedAt equals the tap time (for example 09:31:32.078, sent at 09:31:47), and the Stops Board shows the odometer and photo. Two web-preview problems: (a) Coming back online did not send the queue. Nothing was sent within 10s of the online event; it was sent only on app foreground (visibilitychange) or reload. (b) After a reload on web, a queued arrival with a photo is stuck forever, because its blob: photo URI is dead. Trip end regression passed: James's TEST_ trip 33 ended at 25.0 mi. Deprecated packages: none detected.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "StopsCard ArriveButton", "issue": "After the driver edits the odometer, the old warning text stays visible until the next Confirm (for example, it still says '20010 is lower…' while the field shows 20012). The warning state is reset correctly; only the stale text remains. Clear the message in onChangeText. Reference: /app/driver-app/src/components/StopsCard.tsx:146", "testID": "arrive-message-<id>", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Offline arrival sync on web: back online", "issue": "Calling context.set_offline(False) fired the browser 'online' event, but runArrivals did not run within 10s. The queue was sent only after visibilitychange (AppState active) or a reload. NetInfo on web uses reachabilityUrl '/' with HEAD, and the HEAD '/' requests were ERR_ABORTED in this preview, so isInternetReachable is probably false and the listener never calls syncNow. Native is probably fine, but this is unverified. Suggested fix: also retry on socket reconnect or on a short interval while the queue is not empty. Reference: /app/driver-app/src/services/offlineTrips.ts:461-463", "affected_testIDs": ["stop-<id>"]},
+      {"flow": "Offline arrival with photo on web after reload", "issue": "On web, keepPhoto returns the blob: URI as is. After a reload that URI is revoked, so fetch(uri) in appendPhoto throws a TypeError with no response. isTransient treats that as retryable, so the arrival is never sent and the stop stays 'waiting for signal' forever (reproduced on stop 62). Suggested fix: catch photo-read failures separately and send without the photo, or persist the photo as a data URL on web. Native copies the file to documents, so native is not affected unless the copy fails. Reference: /app/driver-app/src/services/offlineTrips.ts:118,141-145,504-518", "affected_testIDs": ["stop-<id>"]}
+    ],
+    "design_issues": [
+      {"screen": "Dashboard NotesModal", "issues": ["The subtitle still says 'They tap “Got it” to clear it.' Drivers now have 4 quick replies. Reference: /app/web-dashboard/src/components/NotesModal.tsx"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/regression/test_round16_replies_arrival.py",
+    "/app/test_reports/regression/socket_round16_reply.cjs",
+    "/app/test_reports/pytest/round16.xml"
+  ],
+  "action_items": [
+    "offlineTrips.ts: make queued arrivals send when the connection comes back on web. Also retry on socket reconnect or with a timer while ARRIVALS_KEY is not empty. Today the queue is only sent on foreground or app start.",
+    "offlineTrips.ts sendArrival/appendPhoto: if the queued photo cannot be read (a dead blob: URI on web, or a missing file on native), send the arrival without the photo instead of retrying forever.",
+    "runArrivals: when the server refuses a queued arrival (400/404), refresh the stops (getStops or setStopsLocal from the server) so the stop doesn't keep showing 'Arrived · waiting for signal'. Consider telling the driver it was refused.",
+    "StopsCard.tsx:146: clear the message when the odometer text changes.",
+    "Low: lowestAllowed should probably use the higher of the trip start and the last earlier stop's reading. Today, a below-start reading confirmed at stop 1 lowers the threshold for later stops.",
+    "Low: update the NotesModal subtitle text to mention the quick replies."
+  ],
+  "critical_code_review_comments": [
+    "notesController.replyToMyNote is solid: it validates ids and the reply value, scopes the note to the driver, keeps the original readAt, and emits note:replied only for replies other than 'Got it'.",
+    "driverController.arriveAtStop: for a stop that is already arrived, the late-proof branch runs before the location and order checks, so a driver can attach proof without coordinates. That is acceptable because it is scoped to the driver's own stop and never overwrites existing proof.",
+    "runArrivals silently drops refused items and leaves the local 'pending' stop until the next server fetch."
+  ],
+  "updated_files": [
+    "/app/test_reports/regression/test_round16_replies_arrival.py",
+    "/app/test_reports/regression/socket_round16_reply.cjs"
+  ],
+  "success_rate": {"backend": "100% (11/11 new + 26/26 regression)", "frontend": "~90% (all requested flows pass; offline auto-send on the online event and photo-after-reload fail on web)"},
+  "seed_data_creation": "Created TEST_ trip 33 for James and ended it in the UI at 20040, which updated vehicle 3's odometer as in previous rounds. Created and then cleared TEST_ stops 61-63, plus pytest stops and a pytest trip that the fixture cancelled. Created TEST_r16 notes 17, 18 and others for James (there is no delete API, so they remain, all replied or read). Michael's in-progress trip 6 was not touched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Driver app: two copies of each testID exist (Home stays mounted), so use '[data-testid=X] >> visible=true'. Dismiss privacy-notice-ok before login. To simulate offline, call context.set_offline(True) after the app loads. To trigger sync on web, dispatch visibilitychange (set visibilityState hidden, then visible) or reload. The offline queue is in localStorage 'offlineTrips:stopArrivals'. Photos: use page.expect_file_chooser on arrive-photo-<id> or end-odometer-photo. Dashboard reply popup: reply-notice-<noteId>. The modal opens from driver-note-3 on /api/dashboard/drivers.",
+  "rca_of_issue": "Photo stuck after reload (web): keepPhoto() returns the blob: URI on web. After a reload, fetch(blob) throws a TypeError that has no .response, isTransient() returns true, and runArrivals breaks every time. Online event not sending: NetInfo web listener; the HEAD '/' reachability check is aborted in the preview, so state.isInternetReachable is probably false and syncNow is skipped. To reproduce: confirm arrival with set_offline(True), set_offline(False), wait 10s; localStorage still holds the item until visibilitychange."
+}

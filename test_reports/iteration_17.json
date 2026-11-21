@@ -1,0 +1,35 @@
+{
+  "summary": "Retest of the iteration 16 action items, run in the driver app at 390x844 and the dashboard at 1920x1080. All requested items pass. (1) Back online with no reload: after context.set_offline(True), confirm, then set_offline(False), the queue was sent in 3s through the socket reconnect. Server arrivedAt equals the tap time (09:36:15.872Z). (2) Arrival with a photo, then a reload while still offline (all /api blocked except /auth/me), then back online: the stop still showed 'Arrived · waiting for signal · 20052 mi' after the reload. Once /api was unblocked, the 30s interval sent it in 22s (200). The dead blob: photo was skipped, so the arrival was sent without a photo, and the stop changed to 'Arrived · 20052 mi'. (3) Refused arrival: the driver was 1288 km away and the server answered 400. The item was dropped in 23s and the stops were refreshed, so stop 4 shows 'I've arrived' again. (4) Odometer: the warning text clears on edit, and Confirm warns again. After stop 1 was saved at 20041, below the trip start of 20045, stop 2 still compares against 'the trip start (20045)'. (5) The NotesModal subtitle now mentions quick replies, and note 20 shows '↩ “Call me”'. Regression checks pass: online arrival, the note reply 'Call me' clearing the note, and ending trip 34 at 15.0 mi. Backend round 16 suite: 11/11. New finding (MEDIUM, existing behaviour): if the app starts with no signal at all (/auth/me also fails), the driver sees the login screen. It does not recover when the signal returns; it was still on login after 35s. While on that screen, offline sync and the queued stop are not active until the app is relaunched or the driver signs in again. Deprecated packages: none detected.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Cold start with no signal", "issue": "checkAuth: authApi.getMe() fails with no response, so driver stays null and the login screen shows. Nothing retries it when the connection returns; it was still on login 35s after unblocking. startOfflineSync(null) does not run, so queued arrivals and trips are not sent and are not visible until the app is relaunched or the driver signs in again. Suggested fix: when the error has no response and a token is stored, restore the cached driver, or retry checkAuth on the NetInfo or AppState change. Reference: /app/driver-app/src/context/AuthContext.tsx:48-69", "affected_testIDs": ["login-email-input", "home-active-trip-banner"]}
+    ],
+    "design_issues": [
+      {"screen": "Active Trip StopsCard", "issues": ["When a queued arrival is refused (for example 'You are 1288.2 km from this stop'), the stop quietly goes back to 'I've arrived'. The driver is not told why; the reason only goes to console.log. Consider a short notice. Reference: /app/driver-app/src/services/offlineTrips.ts:523"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/regression/r17_setup.py",
+    "/app/test_reports/regression/test_round16_replies_arrival.py",
+    "/app/test_reports/pytest/round17.xml"
+  ],
+  "action_items": [
+    "MEDIUM: AuthContext.checkAuth: when the app starts offline with a stored token, do not leave the driver on the login screen. Either restore the cached driver, or retry checkAuth when NetInfo or AppState reports the connection is back, so the offline queue starts.",
+    "LOW: tell the driver when a saved arrival is refused, and show the server's error.",
+    "LOW (native): sendArrival only catches photo errors from appendPhoto. On native, appendPhoto does not read the file, so a missing file fails during the upload instead. That failure has no response, isTransient treats it as retryable, and it is retried forever. Consider checking new File(uri).exists before appending."
+  ],
+  "critical_code_review_comments": [
+    "The liveUpdates connect handler runs syncNow().finally(getStops), and a 30s setInterval acts as a backstop. Both work, and the running-promise guard prevents parallel sends.",
+    "lowestAllowed now uses the higher of the trip start and the last earlier stop's reading. This is correct.",
+    "runArrivals refused branch: shift, save, removePhoto, getStops. Correct; getStops merges only the remaining waiting items."
+  ],
+  "updated_files": ["/app/test_reports/regression/r17_setup.py (new test helper only)"],
+  "success_rate": {"backend": "100% (11/11 round16 regression)", "frontend": "100% of requested items (6/6). One new medium finding: offline cold start."},
+  "seed_data_creation": "Created TEST_ trip 34 for James and ended it in the UI at 20060, so vehicle 3's odometer is now 20060. Created TEST_r17 stops 64-67, now cleared. Created note 20 'TEST_r17 regression note', which James replied to with 'Call me'; there is no delete API. The pytest fixture created and cancelled its own trip and stops. Michael's trip 6 is still in progress and was not touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use r17_setup.py (setup/state/cleanup) to get 4 stops. On reload, set_offline makes the page load fail. To simulate 'reload while offline', route-abort /api/** and let /auth/me through; blocking /auth/me as well sends the driver to the login screen. The interval sync takes up to 30s; the socket-reconnect sync takes about 3s, and only after set_offline, because page.route does not affect websockets."
+}

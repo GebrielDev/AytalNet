@@ -4,7 +4,7 @@ import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { useColors, useStyles, type Palette } from '../theme';
 import { vehiclesApi } from '../services/api';
-import { setStopsLocal, appendPhoto, type Stop } from '../services/offlineTrips';
+import { submitArrival, type Stop } from '../services/offlineTrips';
 
 const encode = (address: string) => encodeURIComponent(address);
 
@@ -53,11 +53,22 @@ function NavigateButton({ stop, primary }: { stop: Stop; primary: boolean }) {
   );
 }
 
+/** The reading a stop's odometer should not be below: the last earlier stop's, else the trip start. */
+const lowestAllowed = (stops: Stop[], stop: Stop, startOdometer?: number | null) => {
+  const earlier = stops.filter((s) => s.position < stop.position && s.arrivedOdometer != null);
+  const last = earlier[earlier.length - 1];
+  const start = startOdometer != null ? Number(startOdometer) : null;
+  if (last && (start == null || Number(last.arrivedOdometer) >= start)) {
+    return { minOdometer: Number(last.arrivedOdometer), minLabel: `stop ${last.position}` };
+  }
+  return { minOdometer: start, minLabel: 'the trip start' };
+};
+
 /**
  * "I've arrived": checked against the phone's location by the server. The
  * driver can add the odometer reading and its photo first (optional).
  */
-function ArriveButton({ stop }: { stop: Stop }) {
+function ArriveButton({ stop, minOdometer, minLabel }: { stop: Stop; minOdometer: number | null; minLabel: string }) {
   const styles = useStyles(makeStyles);
   const c = useColors();
   const [open, setOpen] = useState(false);
@@ -65,6 +76,7 @@ function ArriveButton({ stop }: { stop: Stop }) {
   const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [warnedFor, setWarnedFor] = useState<string | null>(null);
 
   const takePhoto = async () => {
     setMessage('');
@@ -89,6 +101,13 @@ function ArriveButton({ stop }: { stop: Stop }) {
       setMessage('Enter the odometer reading as a number, for example 10432');
       return;
     }
+    // Sanity check: a reading below the trip start (or an earlier stop) is
+    // usually a typo. Warn once; a second tap saves it anyway.
+    if (reading && minOdometer != null && Number(reading) < minOdometer && warnedFor !== reading) {
+      setWarnedFor(reading);
+      setMessage(`${reading} is lower than ${minLabel} (${minOdometer}). Check the number, or tap Confirm again to save it.`);
+      return;
+    }
     setBusy(true);
     setMessage('');
     try {
@@ -98,18 +117,16 @@ function ArriveButton({ stop }: { stop: Stop }) {
         return;
       }
       const position = await Location.getCurrentPositionAsync({});
-      const form = new FormData();
-      form.append('latitude', String(position.coords.latitude));
-      form.append('longitude', String(position.coords.longitude));
-      if (reading) form.append('odometer', reading);
-      if (photo) await appendPhoto(form, 'photo', photo, `stop-${stop.id}-odometer.jpg`);
-      const res = await vehiclesApi.arriveAtStop(stop.id, form);
-      await setStopsLocal(res.data.stops);
-    } catch (error: any) {
-      setMessage(
-        error?.response?.data?.error ||
-          (error?.response ? 'Could not confirm arrival.' : 'No signal. Try again when you have signal - the arrival (without the reading and photo) is also recorded if you end the trip here.')
-      );
+      const outcome = await submitArrival({
+        stopId: stop.id,
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        odometer: reading ? Number(reading) : null,
+        photoUri: photo,
+      });
+      if (outcome.status === 'rejected') setMessage(outcome.error);
+    } catch {
+      setMessage('Could not get your location. Try again.');
     } finally {
       setBusy(false);
     }
@@ -129,7 +146,7 @@ function ArriveButton({ stop }: { stop: Stop }) {
       <TextInput
         style={styles.input}
         value={odometer}
-        onChangeText={setOdometer}
+        onChangeText={(t) => { setOdometer(t); setWarnedFor(null); setMessage(''); }}
         keyboardType="numeric"
         placeholder="e.g. 10432"
         placeholderTextColor={c.placeholder}
@@ -163,7 +180,7 @@ function ArriveButton({ stop }: { stop: Stop }) {
  * highlighted with Navigate and "I've arrived"; later stops have their own
  * Navigate button; reached stops are ticked off.
  */
-export default function StopsCard({ stops }: { stops: Stop[] }) {
+export default function StopsCard({ stops, startOdometer }: { stops: Stop[]; startOdometer?: number | null }) {
   const styles = useStyles(makeStyles);
   if (!stops.length) return null;
   const nextId = stops.find((s) => !s.arrivedAt)?.id;
@@ -187,13 +204,13 @@ export default function StopsCard({ stops }: { stops: Stop[] }) {
                   {stop.address}
                 </Text>
                 {stop.note ? <Text style={styles.note}>{stop.note}</Text> : null}
-                {stop.arrivedAt ? <Text style={styles.doneText}>{'Arrived' + (stop.arrivedOdometer != null ? ` · ${stop.arrivedOdometer} mi` : '') + (stop.arrivedPhotoUrl ? ' · photo' : '')}</Text> : null}
+                {stop.arrivedAt ? <Text style={styles.doneText}>{(stop.pending ? 'Arrived · waiting for signal' : 'Arrived') + (stop.arrivedOdometer != null ? ` · ${stop.arrivedOdometer} mi` : '') + (stop.arrivedPhotoUrl ? ' · photo' : '')}</Text> : null}
               </View>
             </View>
             {!stop.arrivedAt ? (
               <View style={styles.actions}>
                 <NavigateButton stop={stop} primary={isNext} />
-                {isNext ? <ArriveButton stop={stop} /> : null}
+                {isNext ? <ArriveButton stop={stop} {...lowestAllowed(stops, stop, startOdometer)} /> : null}
               </View>
             ) : null}
           </View>

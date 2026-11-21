@@ -1,0 +1,26 @@
+{
+  "summary": "Retest of the HIGH bug from iteration 18 (an offline launch right after a fresh sign-in showed Login) in the driver app at 390x844. PASS, 5/5 checks. (1) After clearing localStorage and accepting the privacy notice, a fresh login as James wrote driverProfile ({id:3, James Wilson}) along with the tokens and the offlineTrips:* caches. Blocking /api/** and reloading straight away, with no online reload in between, opened Home as James Wilson. Home showed the saved active trip DEF-9012, 4 TEST_r17 stops and the 'No signal - showing trips saved on this phone' banner. (2) Session ended by the server at launch (invalid access and refresh tokens, online reload): Login shows, and storage holds only privacyNoticeSeen:v1, so driverProfile and all offlineTrips:* keys are gone. (3) Session ended by the server mid-session (tokens corrupted, then an API call triggered by tapping the active-trip banner, no reload): the app goes to Login and storage is cleared the same way. (4) Logout: storage holds only privacyNoticeSeen:v1, and an offline reload shows Login. (5) Online regression: login, Home, then the Active Trip note reply 'On my way' on TEST note 27. The note cleared from the UI, and the server has reply='On my way' with readAt and repliedAt set. Deprecated packages: none detected in the files reviewed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/regression/r17_setup.py", "/app/test_reports/regression/r18_note.py"],
+  "action_items": [
+    "LOW: The setOnSessionEnded callback (AuthContext.tsx:41-45) does not call setNotesLocal([]), which logout() does. In-memory notes can survive a session the server ended until the next fetch. Consider adding it for parity.",
+    "LOW: AsyncStorage.removeItem(PROFILE_KEY) and clearOfflineCache() in the callback are fire-and-forget with no .catch, so a storage failure would be an unhandled rejection. Consider `Promise.all([...]).catch(() => {})`."
+  ],
+  "critical_code_review_comments": [
+    "login() now writes PROFILE_KEY after the tokens (AuthContext.tsx:90). The duplicate setItem in checkAuth is gone.",
+    "The session-ended callback clears the profile and the offline caches as intended. It is otherwise not at full parity with logout() (notes state)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend only)", "frontend": "100% (5/5 checks)"},
+  "seed_data_creation": "TEST_ trip 37 for James with 4 TEST_r17 stops (75-78). Both were cleaned up: the trip is cancelled and the stops cleared. TEST_r18 note id 27 for James was answered 'On my way' and left in place, because there is no delete endpoint. Michael's in-progress trip 6 was not touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Driver app at the preview root URL. Flow: localStorage.clear, reload, tap privacy-notice-ok, sign in. To simulate the server ending the session, set accessToken='bad.bad.bad' and refreshToken to any invalid value, then reload or tap home-active-trip-banner. Notes are on the Active Trip screen; their testIDs are note-{id} and note-reply-{id}-on-my-way. Don't use page.go_back(), because it leaves the app.",
+  "rca_of_issue": "Fixed: login() now caches driverProfile, so the first offline launch after sign-in opens Home."
+}

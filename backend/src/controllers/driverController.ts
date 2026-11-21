@@ -308,7 +308,27 @@ export const arriveAtStop = async (req: Request, res: Response): Promise<void> =
       res.status(404).json({ error: 'Stop not found' });
       return;
     }
+    // Optional proof: odometer reading and its photo.
+    const rawOdo = req.body?.odometer;
+    let odometer: number | null = null;
+    if (rawOdo !== undefined && rawOdo !== null && String(rawOdo).trim() !== '') {
+      odometer = Number(rawOdo);
+      if (!Number.isFinite(odometer) || odometer < 0) {
+        res.status(400).json({ error: 'Enter a valid odometer reading' });
+        return;
+      }
+    }
+    const file = (req as any).file as Express.Multer.File | undefined;
     if (stop.arrivedAt) {
+      // Sent later from a phone that had no signal: the stop may already be
+      // marked (e.g. the trip ended there). Keep the proof if none is saved.
+      const update: Record<string, unknown> = {};
+      if (odometer != null && stop.arrivedOdometer == null) update.arrivedOdometer = odometer;
+      if (file && !stop.arrivedPhotoUrl) update.arrivedPhotoUrl = (await storePhoto(file, req)).photoUrl;
+      if (Object.keys(update).length) {
+        await stop.update(update);
+        req.app.get('io')?.to('dashboard').emit('stops:changed', { driverId: stop.driverId });
+      }
       res.json({ stops: await listStops(stop.driverId) });
       return;
     }
@@ -333,20 +353,16 @@ export const arriveAtStop = async (req: Request, res: Response): Promise<void> =
         return;
       }
     }
-    // Optional proof: odometer reading and its photo.
-    const rawOdo = req.body?.odometer;
-    let odometer: number | null = null;
-    if (rawOdo !== undefined && rawOdo !== null && String(rawOdo).trim() !== '') {
-      odometer = Number(rawOdo);
-      if (!Number.isFinite(odometer) || odometer < 0) {
-        res.status(400).json({ error: 'Enter a valid odometer reading' });
-        return;
-      }
-    }
-    const file = (req as any).file as Express.Multer.File | undefined;
+    // A phone with no signal sends the time the driver actually arrived.
+    const sentAt = req.body?.arrivedAt ? new Date(String(req.body.arrivedAt)) : null;
+    const now = Date.now();
+    const when =
+      sentAt && Number.isFinite(sentAt.getTime()) && sentAt.getTime() <= now + 5 * 60000 && sentAt.getTime() >= now - 48 * 3600000
+        ? sentAt
+        : new Date();
     const photoUrl = file ? (await storePhoto(file, req)).photoUrl : null;
     const active = await Trip.findOne({ where: { driverId: stop.driverId, status: 'in_progress' }, attributes: ['id'] });
-    const stops = await markStopArrived(req.app.get('io'), stop, distance, active?.id ?? null, 'driver', { latitude: lat, longitude: lng }, { odometer, photoUrl });
+    const stops = await markStopArrived(req.app.get('io'), stop, distance, active?.id ?? null, 'driver', { latitude: lat, longitude: lng }, { odometer, photoUrl }, when);
     res.json({ stops });
   } catch (error) {
     console.error('[stops] Could not record arrival', error);

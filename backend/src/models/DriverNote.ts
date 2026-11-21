@@ -9,11 +9,14 @@ interface DriverNoteAttributes {
   sentById?: number | null;
   sentByName?: string | null;
   readAt?: Date | null;
+  // The driver's quick reply, e.g. "On my way".
+  reply?: string | null;
+  repliedAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface DriverNoteCreationAttributes extends Optional<DriverNoteAttributes, 'id' | 'sentById' | 'sentByName' | 'readAt' | 'createdAt' | 'updatedAt'> {}
+interface DriverNoteCreationAttributes extends Optional<DriverNoteAttributes, 'id' | 'sentById' | 'sentByName' | 'readAt' | 'reply' | 'repliedAt' | 'createdAt' | 'updatedAt'> {}
 
 class DriverNote extends Model<DriverNoteAttributes, DriverNoteCreationAttributes> implements DriverNoteAttributes {
   public id!: number;
@@ -22,6 +25,8 @@ class DriverNote extends Model<DriverNoteAttributes, DriverNoteCreationAttribute
   public sentById?: number | null;
   public sentByName?: string | null;
   public readAt?: Date | null;
+  public reply?: string | null;
+  public repliedAt?: Date | null;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -40,6 +45,8 @@ DriverNote.init(
     sentById: { type: DataTypes.INTEGER, allowNull: true, field: 'sent_by_id' },
     sentByName: { type: DataTypes.STRING(255), allowNull: true, field: 'sent_by_name' },
     readAt: { type: DataTypes.DATE, allowNull: true, field: 'read_at' },
+    reply: { type: DataTypes.STRING(100), allowNull: true },
+    repliedAt: { type: DataTypes.DATE, allowNull: true, field: 'replied_at' },
   },
   { sequelize, tableName: 'driver_notes', underscored: true }
 );

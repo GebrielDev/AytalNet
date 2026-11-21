@@ -20,6 +20,9 @@ interface AuthContextType {
   logout: () => Promise<void>;
 }
 
+// The signed-in driver, kept so the app opens with no signal.
+const PROFILE_KEY = 'driverProfile';
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -35,7 +38,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // keep showing the authenticated stack, because it reads this value and
   // nothing else, and every screen on it would fail silently until a restart.
   useEffect(() => {
-    setOnSessionEnded(() => setDriver(null));
+    setOnSessionEnded(() => {
+      AsyncStorage.removeItem(PROFILE_KEY).catch(() => {});
+      clearOfflineCache().catch(() => {});
+      setNotesLocal([]);
+      setDriver(null);
+    });
     return () => setOnSessionEnded(null);
   }, []);
 
@@ -51,8 +59,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (token) {
         const res = await authApi.getMe();
         setDriver(res.data.driver);
+        await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(res.data.driver));
       }
-    } catch {
+    } catch (error: any) {
+      // No signal at launch: open with the saved driver so trips and stops
+      // work offline; the server re-checks the session once it is reachable.
+      if (!error?.response) {
+        const saved = await AsyncStorage.getItem(PROFILE_KEY);
+        if (saved && (await AsyncStorage.getItem('accessToken'))) setDriver(JSON.parse(saved));
+      }
       // Deliberately does not clear anything. The response interceptor in
       // services/api.ts owns session termination: the refresher clears the
       // credentials when the server rejects the refresh token, and the
@@ -73,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await authApi.login(email, password);
     await AsyncStorage.setItem('accessToken', res.data.accessToken);
     await AsyncStorage.setItem('refreshToken', res.data.refreshToken);
+    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(res.data.driver));
     setDriver(res.data.driver);
   };
 
@@ -83,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // the driver signed out. Combining the two removals closed the window
     // between them; only a synchronous marker closes this one.
     invalidateSession();
-    await AsyncStorage.multiRemove(['accessToken', 'refreshToken']);
+    await AsyncStorage.multiRemove(['accessToken', 'refreshToken', PROFILE_KEY]);
     await clearOfflineCache();
     setNotesLocal([]);
     setDriver(null);

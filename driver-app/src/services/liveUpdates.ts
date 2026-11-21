@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { io, Socket } from 'socket.io-client';
-import { getStops, setStopsLocal } from './offlineTrips';
+import { getStops, setStopsLocal, syncNow } from './offlineTrips';
 import { fetchNotes, setNotesLocal } from './notes';
 
 /**
@@ -54,7 +54,8 @@ export const startLiveUpdates = (driverId: number | null): (() => void) => {
   // Back online after a gap: fetch once in case an update was missed.
   socket.on('notes:updated', setNotesLocal);
   socket.on('connect', () => {
-    getStops();
+    // Back online: send anything saved on the phone, then refresh.
+    syncNow().finally(getStops);
     fetchNotes();
   });
 

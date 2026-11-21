@@ -73,6 +73,7 @@ const ACTIVE_KEY = 'offlineTrips:activeTrip';
 const VEHICLE_KEY = 'offlineTrips:assignedVehicle';
 const RECENT_KEY = 'offlineTrips:recentTrips';
 const STOPS_KEY = 'offlineTrips:stops';
+const ARRIVALS_KEY = 'offlineTrips:stopArrivals';
 
 let currentDriverId: number | null = null;
 const listeners = new Set<(queue: QueuedItem[]) => void>();
@@ -219,6 +220,9 @@ export const syncNow = (): Promise<void> => {
 };
 
 const runSync = async (): Promise<void> => {
+  // Stop arrivals first, so a stop reached before the trip ended is recorded
+  // as confirmed by the driver, with its reading and photo.
+  await runArrivals();
   const queue = await loadQueue();
   const serverIds = await readJson<Record<string, number>>(SERVER_IDS_KEY, {});
 
@@ -366,6 +370,8 @@ export interface Stop {
   arrivedAt: string | null;
   arrivedOdometer?: number | null;
   arrivedPhotoUrl?: string | null;
+  // Confirmed on the phone with no signal; sent when it is back.
+  pending?: boolean;
 }
 
 const stopListeners = new Set<(stops: Stop[]) => void>();
@@ -384,7 +390,12 @@ export const setStopsLocal = async (stops: Stop[]): Promise<void> => {
 
 // Kept on the phone so the stops still show with no signal.
 export const getStops = async (): Promise<Stop[]> => {
-  const stops = await cachedRead<Stop[]>(STOPS_KEY, async () => (await vehiclesApi.getMyStops()).data, []);
+  const server = await cachedRead<Stop[]>(STOPS_KEY, async () => (await vehiclesApi.getMyStops()).data, []);
+  const waiting = await loadArrivals();
+  const stops = server.map((s) => {
+    const a = waiting.find((w) => w.stopId === s.id);
+    return a && !s.arrivedAt ? { ...s, arrivedAt: a.arrivedAt, arrivedOdometer: a.odometer, pending: true } : s;
+  });
   stopListeners.forEach((listener) => listener(stops));
   return stops;
 };
@@ -454,10 +465,104 @@ export const startOfflineSync = (driverId: number | null): (() => void) => {
     if (next === 'active') syncNow();
   });
   syncNow();
+  // Backstop for phones (and the web preview) that miss the back-online event.
+  const timer = setInterval(syncNow, 30000);
   return () => {
+    clearInterval(timer);
     unsubscribeNet();
     appState.remove();
   };
+};
+
+/** A stop arrival confirmed with no signal, waiting to be sent. */
+export interface QueuedArrival {
+  clientRef: string;
+  driverId: number;
+  stopId: number;
+  latitude: number;
+  longitude: number;
+  odometer: number | null;
+  photoUri: string | null;
+  arrivedAt: string;
+}
+
+const loadArrivals = async (): Promise<QueuedArrival[]> =>
+  (await readJson<QueuedArrival[]>(ARRIVALS_KEY, [])).filter((a) => a.driverId === currentDriverId);
+
+const saveArrivals = async (mine: QueuedArrival[]): Promise<void> => {
+  const all = await readJson<QueuedArrival[]>(ARRIVALS_KEY, []);
+  await writeJson(ARRIVALS_KEY, [...all.filter((a) => a.driverId !== currentDriverId), ...mine]);
+};
+
+const sendArrival = async (a: Omit<QueuedArrival, 'clientRef' | 'driverId'>): Promise<Stop[]> => {
+  const form = new FormData();
+  form.append('latitude', String(a.latitude));
+  form.append('longitude', String(a.longitude));
+  form.append('arrivedAt', a.arrivedAt);
+  if (a.odometer != null) form.append('odometer', String(a.odometer));
+  if (a.photoUri) {
+    try {
+      if (Platform.OS !== 'web' && !new File(a.photoUri).exists) throw new Error('photo missing');
+      await appendPhoto(form, 'photo', a.photoUri, `stop-${a.stopId}-odometer.jpg`);
+    } catch {
+      // The saved photo can no longer be read: send the arrival without it.
+    }
+  }
+  return (await vehiclesApi.arriveAtStop(a.stopId, form)).data.stops;
+};
+
+const runArrivals = async (): Promise<void> => {
+  const arrivals = await loadArrivals();
+  while (arrivals.length > 0) {
+    const item = arrivals[0];
+    try {
+      await setStopsLocal(await sendArrival(item));
+    } catch (error: any) {
+      if (isTransient(error)) break;
+      // Refused (e.g. too far from the stop): nothing to retry. Show the
+      // server's stops again so it no longer looks waiting.
+      console.log('Stop arrival refused', errorMessage(error, 'refused'));
+      arrivals.shift();
+      await saveArrivals(arrivals);
+      removePhoto(item.photoUri ?? undefined);
+      await getStops().catch(() => {});
+      continue;
+    }
+    removePhoto(item.photoUri ?? undefined);
+    arrivals.shift();
+    await saveArrivals(arrivals);
+  }
+};
+
+export type ArrivalOutcome = { status: 'sent' } | { status: 'saved' } | { status: 'rejected'; error: string };
+
+/**
+ * Confirms arrival at a stop. With no signal it is kept on the phone (with
+ * the reading and photo), the stop shows as arrived, and it is sent later.
+ */
+export const submitArrival = async (a: Omit<QueuedArrival, 'clientRef' | 'driverId' | 'arrivedAt'>): Promise<ArrivalOutcome> => {
+  const arrivedAt = new Date().toISOString();
+  try {
+    await setStopsLocal(await sendArrival({ ...a, arrivedAt }));
+    return { status: 'sent' };
+  } catch (error: any) {
+    if (!isTransient(error) || currentDriverId == null) {
+      return { status: 'rejected', error: errorMessage(error, 'Could not confirm arrival.') };
+    }
+    const item: QueuedArrival = {
+      ...a,
+      arrivedAt,
+      clientRef: newClientRef(),
+      driverId: currentDriverId,
+      photoUri: a.photoUri ? keepPhoto(a.photoUri, `stop-${a.stopId}`) : null,
+    };
+    await saveArrivals([...(await loadArrivals()), item]);
+    const stops = await readJson<Stop[]>(STOPS_KEY, []);
+    await setStopsLocal(
+      stops.map((s) => (s.id === a.stopId ? { ...s, arrivedAt, arrivedOdometer: a.odometer, pending: true } : s))
+    );
+    return { status: 'saved' };
+  }
 };
 
 /** Clears this driver's cached server data on sign-out. The queue is kept. */

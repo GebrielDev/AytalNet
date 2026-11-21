@@ -159,6 +159,7 @@ export const tripsApi = {
 export const notesApi = {
   getMine: () => api.get('/drivers/my-notes'),
   markRead: (id: number) => api.post(`/drivers/my-notes/${id}/read`),
+  reply: (id: number, reply: string) => api.post(`/drivers/my-notes/${id}/reply`, { reply }),
 };
 
 export default api;

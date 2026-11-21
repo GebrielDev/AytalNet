@@ -9,6 +9,8 @@ interface Note {
   message: string;
   sentByName: string | null;
   readAt: string | null;
+  reply: string | null;
+  repliedAt: string | null;
   createdAt: string;
 }
 
@@ -65,7 +67,7 @@ export default function NotesModal({ driver, onClose }: { driver: { id: number; 
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
         <div className="p-6 pb-3">
           <h2 className="text-lg font-bold text-gray-900">Note to {driver.name}</h2>
-          <p className="text-sm text-gray-500 mt-1">Shows on the driver's trip screen straight away. They tap “Got it” to clear it.</p>
+          <p className="text-sm text-gray-500 mt-1">Shows on the driver's trip screen straight away. They answer with a quick reply (Got it, On my way, Call me, Running late).</p>
         </div>
         <div className="px-6 space-y-3 overflow-y-auto flex-1">
           <div className="flex flex-wrap gap-2">
@@ -92,6 +94,11 @@ export default function NotesModal({ driver, onClose }: { driver: { id: number; 
               {notes.map((n) => (
                 <li key={n.id} className="border border-gray-200 rounded-lg p-3" data-testid={`notes-item-${n.id}`}>
                   <p className="text-sm text-gray-900">{n.message}</p>
+                  {n.reply && n.reply !== 'Got it' && (
+                    <p className="text-sm font-semibold text-blue-700 mt-1" data-testid={`notes-reply-${n.id}`}>
+                      ↩ “{n.reply}”{n.repliedAt ? ` · ${new Date(n.repliedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500 mt-1">
                     {new Date(n.createdAt).toLocaleString()} · {n.sentByName || 'Dispatcher'} ·{' '}
                     {n.readAt ? (

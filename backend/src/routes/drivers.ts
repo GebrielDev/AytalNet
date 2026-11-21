@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getAllDrivers, getDriverById, createDriver, updateDriver, deleteDriver, assignVehicle, getMyAssignedVehicle, setDriverDestination, getMyDestination, setDriverStops, getDriverStops, getMyStops, arriveAtStop, getStopsBoard, updateMyLocation } from '../controllers/driverController';
-import { sendDriverNote, getDriverNotes, getMyNotes, markMyNoteRead } from '../controllers/notesController';
+import { sendDriverNote, getDriverNotes, getMyNotes, markMyNoteRead, replyToMyNote } from '../controllers/notesController';
 import { authenticateToken, requireUser, requireDriver } from '../middleware/auth';
 import multer from 'multer';
 
@@ -21,6 +21,7 @@ router.post('/my-location', authenticateToken, requireDriver, updateMyLocation);
 router.post('/my-stops/:stopId/arrive', authenticateToken, requireDriver, arrivalPhoto, arriveAtStop);
 router.get('/my-notes', authenticateToken, requireDriver, getMyNotes);
 router.post('/my-notes/:noteId/read', authenticateToken, requireDriver, markMyNoteRead);
+router.post('/my-notes/:noteId/reply', authenticateToken, requireDriver, replyToMyNote);
 
 router.use(authenticateToken, requireUser);
 

@@ -10,6 +10,8 @@ const noteView = (n: DriverNote) => ({
   message: n.message,
   sentByName: n.sentByName ?? null,
   readAt: n.readAt ?? null,
+  reply: n.reply ?? null,
+  repliedAt: n.repliedAt ?? null,
   createdAt: n.createdAt,
 });
 
@@ -83,5 +85,40 @@ export const markMyNoteRead = async (req: Request, res: Response): Promise<void>
     res.json(await unreadFor(driverId));
   } catch (error) {
     res.status(500).json({ error: 'Failed to update note' });
+  }
+};
+
+/** Quick answers a driver can send back. */
+export const QUICK_REPLIES = ['Got it', 'On my way', 'Call me', 'Running late'];
+
+export const replyToMyNote = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const driverId = req.driver!.id;
+    if (!validId(req.params.noteId)) {
+      res.status(400).json({ error: 'Invalid note id' });
+      return;
+    }
+    const reply = String(req.body?.reply ?? '').trim();
+    if (!QUICK_REPLIES.includes(reply)) {
+      res.status(400).json({ error: `Reply must be one of: ${QUICK_REPLIES.join(', ')}` });
+      return;
+    }
+    const note = await DriverNote.findOne({ where: { id: req.params.noteId, driverId } });
+    if (!note) {
+      res.status(404).json({ error: 'Note not found' });
+      return;
+    }
+    const now = new Date();
+    await note.update({ reply, repliedAt: now, readAt: note.readAt ?? now });
+    const io = req.app.get('io');
+    io?.to('dashboard').emit('notes:changed', { driverId });
+    if (reply !== 'Got it') {
+      const driver = await Driver.findByPk(driverId, { attributes: ['name'] });
+      io?.to('dashboard').emit('note:replied', { noteId: note.id, driverId, driverName: driver?.name ?? 'Driver', message: note.message, reply, at: now });
+    }
+    res.json(await unreadFor(driverId));
+  } catch (error) {
+    console.error('[notes] Could not save reply', error);
+    res.status(500).json({ error: 'Failed to send reply' });
   }
 };

@@ -28,11 +28,14 @@ export const fetchNotes = async (): Promise<void> => {
   }
 };
 
-export const acknowledgeNote = async (id: number): Promise<void> => {
-  publish(current.filter((n) => n.id !== id));
+export const QUICK_REPLIES = ['Got it', 'On my way', 'Call me', 'Running late'];
+
+/** Sends a quick reply (which also clears the note). False if it could not be sent. */
+export const replyToNote = async (id: number, reply: string): Promise<boolean> => {
   try {
-    publish((await notesApi.markRead(id)).data);
+    publish((await notesApi.reply(id, reply)).data);
+    return true;
   } catch {
-    // Re-fetched next time the screen opens.
+    return false;
   }
 };

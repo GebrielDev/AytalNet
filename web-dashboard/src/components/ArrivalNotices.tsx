@@ -18,8 +18,17 @@ const SOCKET_URL = new URL(import.meta.env.VITE_API_URL || '/', window.location.
  * by tapping "I've arrived" or by ending a trip there. Each notice stays for
  * 20 seconds or until dismissed.
  */
+interface Reply {
+  noteId: number;
+  driverName: string;
+  message: string;
+  reply: string;
+  at: string;
+}
+
 export default function ArrivalNotices() {
   const [notices, setNotices] = useState<Arrival[]>([]);
+  const [replies, setReplies] = useState<Reply[]>([]);
 
   useEffect(() => {
     const socket = io(SOCKET_URL, {
@@ -30,6 +39,11 @@ export default function ArrivalNotices() {
     socket.on('driver:arrived', (arrival: Arrival) => {
       setNotices((list) => [arrival, ...list.filter((n) => n.stopId !== arrival.stopId)].slice(0, 4));
       setTimeout(() => setNotices((list) => list.filter((n) => n.stopId !== arrival.stopId)), 20000);
+    });
+    // A driver answered an office note ("On my way", "Call me", ...).
+    socket.on('note:replied', (r: Reply) => {
+      setReplies((list) => [r, ...list.filter((x) => x.noteId !== r.noteId)].slice(0, 4));
+      setTimeout(() => setReplies((list) => list.filter((x) => x.noteId !== r.noteId)), 30000);
     });
     // Rejoin after the server closes the socket at token expiry: a REST call
     // renews the token via the API client first.
@@ -58,10 +72,23 @@ export default function ArrivalNotices() {
     };
   }, []);
 
-  if (!notices.length) return null;
+  if (!notices.length && !replies.length) return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 space-y-2 w-80 max-w-[calc(100vw-2rem)]" data-testid="arrival-notices">
+      {replies.map((r) => (
+        <div key={`reply-${r.noteId}`} className="bg-white border border-blue-200 shadow-lg rounded-xl p-4 flex gap-3" data-testid={`reply-notice-${r.noteId}`}>
+          <span className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold shrink-0">↩</span>
+          <div className="flex-1 text-sm">
+            <p className="font-semibold text-gray-900">{r.driverName}: “{r.reply}”</p>
+            <p className="text-gray-600 line-clamp-2">Re: {r.message}</p>
+            <p className="text-xs text-gray-500 mt-1">{new Date(r.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
+          </div>
+          <button data-testid={`reply-notice-dismiss-${r.noteId}`} onClick={() => setReplies((l) => l.filter((x) => x.noteId !== r.noteId))} className="text-gray-400 hover:text-gray-700 self-start" aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      ))}
       {notices.map((n) => (
         <div key={n.stopId} className="bg-white border border-green-200 shadow-lg rounded-xl p-4 flex gap-3" data-testid={`arrival-notice-${n.stopId}`}>
           <span className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold shrink-0">✓</span>

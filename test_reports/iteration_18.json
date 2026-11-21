@@ -1,0 +1,29 @@
+{
+  "summary": "Retest of iteration 17's 'opens on Login with no signal' issue in the driver app at 390x844. PARTIAL PASS. A cached driverProfile works: after one online launch, an offline reload (/api/** aborted, /auth/me included) opens Home as James, with the saved active trip (DEF-9012) and 4 stops. An offline arrival showed 'Arrived · waiting for signal · 20070 mi'. After /api was unblocked, it was sent in 26s by the 30s timer, and the server has arrivedAt and arrivedOdometer=20070. BUG (HIGH): login() never writes driverProfile. Only checkAuth after a successful getMe does. A driver who signs in and loses signal before the next app launch still gets the Login screen, which is the original iteration 17 problem. Reproduced: after a fresh login, localStorage had tokens but no driverProfile, and the offline reload showed LOGIN. The other checks pass. After logout, storage holds only privacyNoticeSeen, and an offline reload shows Login. With tokens removed, Login shows both online and offline. Invalid tokens online show Login. Invalid tokens offline open Home with the cached profile, and once the signal returns the app goes to Login within 4s. Regression: online login, Home, and the Active Trip note reply 'On my way' all pass (the note cleared and the server has reply='On my way'). Deprecated packages: none detected in the files reviewed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Fresh sign-in, then no signal at next launch", "issue": "AuthContext.login() saves accessToken and refreshToken but not driverProfile. checkAuth only caches the profile after a successful getMe, so the profile exists only after a second online launch. Reference: /app/driver-app/src/context/AuthContext.tsx:83-88", "affected_testIDs": ["login-submit-button", "home-logout-button"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/regression/r17_setup.py", "/app/test_reports/regression/r18_note.py"],
+  "action_items": [
+    "HIGH: In AuthContext.login(), add `await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(res.data.driver))` after the tokens are stored, so the first offline launch after sign-in opens Home.",
+    "LOW: Remove the duplicated, mis-indented setItem(PROFILE_KEY) at AuthContext.tsx:57-58.",
+    "LOW: When the interceptor ends the session (refresh rejected), driverProfile and the offlineTrips:* caches are left in storage. This is harmless because the token gate blocks their use, but it leaves personal data behind. Consider clearing PROFILE_KEY (and clearOfflineCache) in the setOnSessionEnded callback, as logout() does."
+  ],
+  "critical_code_review_comments": [
+    "AuthContext.tsx:57-58: the same setItem appears twice, and line 57 is mis-indented.",
+    "checkAuth fallback: `!error?.response` together with a token check is the correct gate for no signal versus 401. The interceptor still ends revoked sessions once the server is reachable (verified: Login in 4s)."
+  ],
+  "updated_files": ["/app/test_reports/regression/r18_note.py (new helper)"],
+  "success_rate": {"backend": "N/A (frontend only)", "frontend": "90% (9/10 checks; failed: offline launch straight after a fresh sign-in)"},
+  "seed_data_creation": "TEST_ trip 36 for James with 4 TEST_r17 stops (71-74), now cancelled and cleared by r17_setup.py cleanup. TEST_r18 note id 26 for James was answered 'On my way' and left in place (no delete endpoint was used). Michael's trip was not touched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "To retest the fix: clear localStorage, accept privacy-notice-ok, sign in, then route-abort **/api/** and reload WITHOUT an online reload in between. Expect Home. Before the fix, driverProfile is null right after login. Use r17_setup.py setup/state/cleanup for the stops, and r18_note.py create/get for notes. Offline arrival needs geolocation granted at 33.4497,-111.9464. After unroute, the 30s timer sync took about 26s.",
+  "rca_of_issue": "Root cause: PROFILE_KEY is written only in checkAuth after getMe succeeds, and login() does not write it. Repro: localStorage.clear → sign in → route abort /api/** → reload → Login (driverProfile is null). Mitigation: cache the profile in login()."
+}
