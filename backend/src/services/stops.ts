@@ -23,6 +23,10 @@ export const stopView = (s: DriverStop) => ({
   tripId: s.tripId ?? null,
   arrivedOdometer: s.arrivedOdometer != null ? Number(s.arrivedOdometer) : null,
   arrivedPhotoUrl: s.arrivedPhotoUrl ?? null,
+  originalOdometer: s.originalOdometer != null ? Number(s.originalOdometer) : null,
+  odometerCorrectedAt: s.odometerCorrectedAt ?? null,
+  odometerCorrectedBy: s.odometerCorrectedBy ?? null,
+  odometerCorrectionReason: s.odometerCorrectionReason ?? null,
 });
 
 type StopView = ReturnType<typeof stopView>;

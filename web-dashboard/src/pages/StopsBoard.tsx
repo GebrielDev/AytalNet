@@ -4,6 +4,7 @@ import { driversApi } from '../services/api';
 import StopsModal from '../components/StopsModal';
 import BoardMap, { type MapRow } from '../components/BoardMap';
 import AuthImage from '../components/AuthImage';
+import FixReadingModal, { CorrectionNote } from '../components/FixReadingModal';
 
 interface BoardStop {
   id: number;
@@ -17,6 +18,10 @@ interface BoardStop {
   arrivedOdometer?: number | null;
   arrivedPhotoUrl?: string | null;
   odometerFlag?: string | null;
+  originalOdometer?: number | null;
+  odometerCorrectedBy?: string | null;
+  odometerCorrectedAt?: string | null;
+  odometerCorrectionReason?: string | null;
 }
 
 interface BoardRow {
@@ -59,6 +64,7 @@ export default function StopsBoard() {
   const [flash, setFlash] = useState<number | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
   const [showMap, setShowMap] = useState(true);
+  const [fixing, setFixing] = useState<{ driverId: number; stop: BoardStop } | null>(null);
   // Re-render every 30 s so "Live" turns into "Last seen" once a point goes stale.
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -251,6 +257,12 @@ export default function StopsBoard() {
                               Arrived {time(s.arrivedAt)}{s.arrivedDistanceMeters != null ? ` · ${s.arrivedDistanceMeters} m` : ''}
                               {s.arrivedOdometer != null ? <span className={s.odometerFlag ? 'text-red-700 font-semibold' : 'text-gray-700'} data-testid={`board-stop-odometer-${s.id}`}> · Odometer {s.arrivedOdometer} mi</span> : null}
                               {s.odometerFlag ? <span className="block text-xs font-semibold text-red-700" data-testid={`board-stop-flag-${s.id}`}>⚠ {s.odometerFlag}</span> : null}
+                              <CorrectionNote stop={s} testId={`board-stop-corrected-${s.id}`} />
+                              {s.odometerFlag || s.originalOdometer != null ? (
+                                <button data-testid={`board-stop-fix-${s.id}`} onClick={() => setFixing({ driverId: r.driverId, stop: s })} className="mt-1 text-xs font-semibold text-blue-700 hover:underline">
+                                  Fix reading
+                                </button>
+                              ) : null}
                               {s.arrivedPhotoUrl ? <AuthImage src={s.arrivedPhotoUrl} alt="Odometer at stop" className="mt-1 w-16 h-16 object-cover rounded-md border border-gray-200" testId={`board-stop-photo-${s.id}`} /> : null}
                             </span>
                           ) : s.id === nextId ? (
@@ -272,6 +284,7 @@ export default function StopsBoard() {
       </div>
 
       {editing && <StopsModal driver={editing} onClose={() => setEditing(null)} onSaved={load} />}
+      {fixing && <FixReadingModal driverId={fixing.driverId} stop={fixing.stop} onClose={() => setFixing(null)} onSaved={() => load()} />}
     </div>
   );
 }

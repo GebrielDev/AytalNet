@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { driversApi } from '../services/api';
 import AddressSearch, { type AddressPick } from './AddressSearch';
 import AuthImage from './AuthImage';
+import FixReadingModal, { CorrectionNote } from './FixReadingModal';
 
 interface Stop {
   id?: number;
@@ -14,6 +15,10 @@ interface Stop {
   arrivedOdometer?: number | null;
   arrivedPhotoUrl?: string | null;
   odometerFlag?: string | null;
+  originalOdometer?: number | null;
+  odometerCorrectedBy?: string | null;
+  odometerCorrectedAt?: string | null;
+  odometerCorrectionReason?: string | null;
 }
 
 type Draft = AddressPick & { key: string; note: string; id?: number };
@@ -34,6 +39,7 @@ export default function StopsModal({ driver, onClose, onSaved }: { driver: { id:
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notFound, setNotFound] = useState<string[]>([]);
+  const [fixing, setFixing] = useState<Stop | null>(null);
 
   useEffect(() => {
     driversApi
@@ -107,6 +113,8 @@ export default function StopsModal({ driver, onClose, onSaved }: { driver: { id:
                 </span>
                 {s.arrivedOdometer != null && <span className={`block text-xs ${s.odometerFlag ? 'text-red-700 font-semibold' : 'text-gray-700'}`} data-testid={`stops-done-odometer-${i}`}>Odometer {s.arrivedOdometer} mi</span>}
                 {s.odometerFlag && <span className="block text-xs font-semibold text-red-700" data-testid={`stops-done-flag-${i}`}>⚠ {s.odometerFlag}</span>}
+                <CorrectionNote stop={s} testId={`stops-done-corrected-${i}`} />
+                {(s.odometerFlag || s.originalOdometer != null) && <button data-testid={`stops-done-fix-${i}`} onClick={() => setFixing(s)} className="mt-1 text-xs font-semibold text-blue-700 hover:underline">Fix reading</button>}
                 {s.arrivedPhotoUrl && (
                   <a href="#" onClick={(e) => e.preventDefault()} className="block mt-1">
                     <AuthImage src={s.arrivedPhotoUrl} alt="Odometer at stop" className="w-24 h-24 object-cover rounded-lg border border-gray-200" testId={`stops-done-photo-${i}`} />
@@ -165,6 +173,9 @@ export default function StopsModal({ driver, onClose, onSaved }: { driver: { id:
           </div>
         </div>
       </div>
+      {fixing && (
+        <FixReadingModal driverId={driver.id} stop={{ ...fixing, id: fixing.id!, position: done.indexOf(fixing) + 1 }} onClose={() => setFixing(null)} onSaved={(stops: Stop[]) => { setDone(stops.filter((x) => x.arrivedAt)); onSaved(); }} />
+      )}
     </div>
   );
 }

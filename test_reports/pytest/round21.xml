@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="17" time="8.385" timestamp="2026-11-21T12:15:41.330084+00:00" hostname="agent-env-162fb2ea-1243-4414-ad3a-72d383847f45"><testcase classname="test_round21_fix_reading.TestFixReading" name="test_initial_flags" time="2.231" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_auth" time="0.256" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_validation_400[body0]" time="0.128" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_validation_400[body1]" time="0.134" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_validation_400[body2]" time="0.141" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_validation_400[body3]" time="0.127" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_validation_400[body4]" time="0.127" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_validation_400[body5]" time="0.128" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_validation_400[body6]" time="0.129" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_validation_400[body7]" time="0.127" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_validation_400[body8]" time="0.122" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_loose_types_report" time="0.395"><failure message="AssertionError: {'bool': 200, 'array': 200}&#10;assert (200 == 400)">self = &lt;test_round21_fix_reading.TestFixReading object at 0xffccbf4e7c50&gt;
+ctx = {'a': {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiZW1haWwiOiJhZG1pbkBmbGVldC5jb20iLCJ0e...pQdpRKi3Cg861uEARUgBP-h4-i4'}, 'au': {'id': 1, 'email': 'admin@fleet.com', 'name': 'Admin User', 'role': 'admin'}, ...}
+
+    def test_loose_types_report(self, ctx):
+        # Informational: bool/array coerce via Number() (true-&gt;1, [5]-&gt;5). Expect 400 ideally.
+        res = {}
+        for name, val in [("bool", True), ("array", [5])]:
+            res[name] = put(ctx, ctx["ids"][1], {"odometer": val, "reason": "TEST_r"}).status_code
+        print("LOOSE_TYPES", res)
+        # restore whatever got written so later tests start from a known state - first correction sets original
+        stop = me(requests.get(f"{BASE}/drivers/{JAMES}/stops", headers=ctx["a"]).json(), ctx["ids"][1])
+        ctx["loose_written"] = stop.get("originalOdometer") is not None
+&gt;       assert res["bool"] == 400 and res["array"] == 400, res
+E       AssertionError: {'bool': 200, 'array': 200}
+E       assert (200 == 400)
+
+test_round21_fix_reading.py:103: AssertionError</failure></testcase><testcase classname="test_round21_fix_reading.TestFixReading" name="test_no_reading_and_ids" time="0.620" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_correct_clears_flag" time="0.250" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_still_bad_value_keeps_flag" time="0.145" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_second_correction_keeps_original" time="0.394" /><testcase classname="test_round21_fix_reading.TestFixReading" name="test_sockets" time="2.818" /></testsuite></testsuites>

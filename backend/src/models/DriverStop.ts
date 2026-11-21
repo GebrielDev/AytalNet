@@ -23,12 +23,17 @@ interface DriverStopAttributes {
   // Optional proof at the stop: odometer reading and its photo.
   arrivedOdometer?: number | null;
   arrivedPhotoUrl?: string | null;
+  // Set when a dispatcher fixes the reading: what the driver first entered.
+  originalOdometer?: number | null;
+  odometerCorrectedAt?: Date | null;
+  odometerCorrectedBy?: string | null;
+  odometerCorrectionReason?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 interface DriverStopCreationAttributes
-  extends Optional<DriverStopAttributes, 'id' | 'note' | 'latitude' | 'longitude' | 'arrivedAt' | 'arrivedDistanceMeters' | 'arrivedLatitude' | 'arrivedLongitude' | 'tripId' | 'arrivedOdometer' | 'arrivedPhotoUrl' | 'createdAt' | 'updatedAt'> {}
+  extends Optional<DriverStopAttributes, 'id' | 'note' | 'latitude' | 'longitude' | 'arrivedAt' | 'arrivedDistanceMeters' | 'arrivedLatitude' | 'arrivedLongitude' | 'tripId' | 'arrivedOdometer' | 'arrivedPhotoUrl' | 'originalOdometer' | 'odometerCorrectedAt' | 'odometerCorrectedBy' | 'odometerCorrectionReason' | 'createdAt' | 'updatedAt'> {}
 
 class DriverStop extends Model<DriverStopAttributes, DriverStopCreationAttributes> implements DriverStopAttributes {
   public id!: number;
@@ -45,6 +50,10 @@ class DriverStop extends Model<DriverStopAttributes, DriverStopCreationAttribute
   public tripId?: number | null;
   public arrivedOdometer?: number | null;
   public arrivedPhotoUrl?: string | null;
+  public originalOdometer?: number | null;
+  public odometerCorrectedAt?: Date | null;
+  public odometerCorrectedBy?: string | null;
+  public odometerCorrectionReason?: string | null;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -71,6 +80,10 @@ DriverStop.init(
     tripId: { type: DataTypes.INTEGER, allowNull: true, field: 'trip_id' },
     arrivedOdometer: { type: DataTypes.DECIMAL(10, 1), allowNull: true, field: 'arrived_odometer' },
     arrivedPhotoUrl: { type: DataTypes.TEXT, allowNull: true, field: 'arrived_photo_url' },
+    originalOdometer: { type: DataTypes.DECIMAL(10, 1), allowNull: true, field: 'original_odometer' },
+    odometerCorrectedAt: { type: DataTypes.DATE, allowNull: true, field: 'odometer_corrected_at' },
+    odometerCorrectedBy: { type: DataTypes.STRING(255), allowNull: true, field: 'odometer_corrected_by' },
+    odometerCorrectionReason: { type: DataTypes.STRING(255), allowNull: true, field: 'odometer_correction_reason' },
   },
   { sequelize, tableName: 'driver_stops', underscored: true }
 );

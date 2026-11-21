@@ -1,0 +1,45 @@
+{
+  "summary": "Fix A Reading tested end-to-end. Backend: new suite test_round21_fix_reading.py, 16/17 pass. Checked: driver token 403, no token 401; 400 for missing, negative, 'abc', '', null and >9,999,999 odometer, for empty or whitespace reason, for a stop with no reading, and for non-numeric stop or driver ids; 404 for another driver's stop and for an unknown stop. A good correction clears the flag and recomputes the next stop against the corrected value ('8980 mi since stop 2'). The original stays 25065 (the driver's first entry) through 6+ corrections by admin and dispatcher. correctedBy is set to the user's name (Admin User / Dispatcher User), the reason is trimmed and correctedAt is set. Correcting to a still-bad value keeps a 'Lower than trip start' flag. The board's odometerFlags count goes 2→1→0, /drivers/:id/stops and /drivers/my-stops show the new value, and the dashboard gets stops:changed {driverId:3} while the driver gets stops:updated with the new value. One failure (minor): Number() lets a JSON boolean or array through (true→1 mi, [5]→5 mi saved, 200). Regression test_round20_odometer_flags: 6/6 pass. Dashboard (dispatcher and admin): Stops Board 'Fix reading' only on flagged or corrected stops. The modal prefills the current value. Save is disabled for an empty or negative reading and for an empty or blank reason. Cancel leaves the flag. Save clears the red flag and the badge, and the '✎ Corrected from X mi by Name · date — reason' note appears. A server error shows in fix-reading-error and the modal stays open. The board refreshes live when a correction is made elsewhere. The same flow works in StopsModal (stops-done-fix-3 / stops-done-corrected-3, the board refreshes behind it). Light and dark mode are readable. Test data cleaned up: trip 46 cancelled, James's stops cleared, vehicle 3 odometer back to 20060.0, Michael's trip 6 untouched.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/drivers/:id/stops/:stopId/odometer", "issue": "Odometer check uses Number(raw), so a JSON boolean or array passes: {odometer:true} saves 1 mi and {odometer:[5]} saves 5 mi (200). Accept only a number, or a string of digits."},
+      {"endpoint": "PUT /api/drivers/:id/stops/:stopId/odometer", "issue": "reason is String(req.body.reason), so an object becomes the text '[object Object]'. Accept only strings."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "FixReadingModal", "issues": [
+        "Escape key and backdrop click don't close the modal (only Cancel does)",
+        "If the current value equals the original (re-corrected back to the driver's value), the modal shows 'Driver entered 29065 mi · now 29065 mi', which is redundant",
+        "In StopsModal the modal title uses done.indexOf(stop)+1 as the stop number instead of stop.position. This is right only when the finished stops are the first N positions. Reference: /app/web-dashboard/src/components/StopsModal.tsx:177"
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/regression/test_round21_fix_reading.py",
+    "/app/test_reports/regression/socket_round21_fix.cjs",
+    "/app/test_reports/regression/r21_cleanup.py",
+    "/app/test_reports/regression/test_round20_odometer_flags.py",
+    "/app/test_reports/pytest/round21.xml"
+  ],
+  "action_items": [
+    "Tighten odometer validation in correctStopOdometer: reject non-number and non-numeric-string types (boolean, array, object) with 400",
+    "Validate that reason is a string (typeof check) before trimming",
+    "Optional UX: close FixReadingModal on Escape; use stop.position for the stop number in StopsModal; hide '· now X mi' when it equals the original"
+  ],
+  "critical_code_review_comments": [
+    "correctStopOdometer: originalOdometer is set to stop.originalOdometer ?? stop.arrivedOdometer, which is right. The driver's first entry is never overwritten (checked in the DB: 25065 kept after 6+ corrections)",
+    "No audit trail of intermediate corrections: only the latest correctedBy, reason and at are kept. Fine for the spec, but say so if history is wanted",
+    "The StopsBoard onSaved ignores the returned stops and calls load(). That works, but it is an extra round trip"
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "94% (16/17 new + 6/6 regression)", "frontend": "100% of tested flows"},
+  "seed_data_creation": "Temporary TEST_ trip 46 and 5 TEST_r21 stops for James (driver 3). All cleaned up: trip cancelled, stops cleared, vehicle 3 odometer restored to 20060.0.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/test_reports/regression && KEEP=1 pytest test_round21_fix_reading.py -s (prints TRIP_ID, ORIG_ODO, IDS). With KEEP, stop 4 (ids[3]) is left flagged for UI checks. Afterwards run python r21_cleanup.py <ORIG_ODO>. The test_loose_types_report test fails until boolean/array odometer values are rejected. Dashboard login: input[type=email]/[type=password] + submit, then /api/dashboard/stops; theme toggle testid theme-toggle; StopsModal opens with stops-board-edit-3."
+}

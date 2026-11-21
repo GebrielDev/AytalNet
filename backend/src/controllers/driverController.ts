@@ -510,3 +510,50 @@ export const updateMyLocation = async (req: Request, res: Response): Promise<voi
     res.status(500).json({ error: 'Failed to update location' });
   }
 };
+
+/**
+ * A dispatcher fixes a stop's odometer reading. The driver's first entry is
+ * kept as originalOdometer (never overwritten by later fixes).
+ */
+export const correctStopOdometer = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!/^\d+$/.test(req.params.id) || !/^\d+$/.test(req.params.stopId)) {
+      res.status(400).json({ error: 'Invalid id' });
+      return;
+    }
+    const stop = await DriverStop.findOne({ where: { id: req.params.stopId, driverId: req.params.id } });
+    if (!stop) {
+      res.status(404).json({ error: 'Stop not found' });
+      return;
+    }
+    if (stop.arrivedOdometer == null) {
+      res.status(400).json({ error: 'This stop has no odometer reading to correct' });
+      return;
+    }
+    const raw = req.body?.odometer;
+    // Only a number or a numeric string (not true/false, lists, objects).
+    const odometer =
+      typeof raw === 'number' || (typeof raw === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(raw)) ? Number(raw) : NaN;
+    if (!Number.isFinite(odometer) || odometer < 0 || odometer > 9999999) {
+      res.status(400).json({ error: 'Enter a valid odometer reading' });
+      return;
+    }
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 255) : '';
+    if (!reason) {
+      res.status(400).json({ error: 'Add a short reason for the record' });
+      return;
+    }
+    await stop.update({
+      originalOdometer: stop.originalOdometer ?? stop.arrivedOdometer,
+      arrivedOdometer: odometer,
+      odometerCorrectedAt: new Date(),
+      odometerCorrectedBy: req.user!.name,
+      odometerCorrectionReason: reason,
+    });
+    console.log(`[stops] Odometer for stop ${stop.id} corrected to ${odometer} by user ${req.user!.id}`);
+    res.json({ stops: await syncDriverStops(req.app.get('io'), stop.driverId) });
+  } catch (error) {
+    console.error('[stops] Could not correct odometer', error);
+    res.status(500).json({ error: 'Failed to correct the reading' });
+  }
+};

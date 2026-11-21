@@ -109,6 +109,10 @@ export const connectDatabase = async (): Promise<void> => {
       'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS arrived_longitude DECIMAL(10,7);',
       'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS arrived_odometer DECIMAL(10,1);',
       'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS arrived_photo_url TEXT;',
+      'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS original_odometer DECIMAL(10,1);',
+      'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS odometer_corrected_at TIMESTAMPTZ;',
+      'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS odometer_corrected_by VARCHAR(255);',
+      'ALTER TABLE driver_stops ADD COLUMN IF NOT EXISTS odometer_correction_reason VARCHAR(255);',
       'ALTER TABLE IF EXISTS driver_notes ADD COLUMN IF NOT EXISTS reply VARCHAR(100);',
       'ALTER TABLE IF EXISTS driver_notes ADD COLUMN IF NOT EXISTS replied_at TIMESTAMPTZ;',
     ]) {
