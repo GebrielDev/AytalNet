@@ -54,9 +54,10 @@ interface ActiveTrip {
  * 'connecting' - the transport dropped and socket.io is retrying on its own.
  * 'offline'    - it is not coming back without help. Socket.io does not retry a
  *                handshake the server rejected, nor a server-initiated
- *                disconnect, and the server now closes sockets at token expiry.
- *                This is the state a tab left open overnight lands in, with a
- *                board that quietly stopped updating.
+ *                disconnect, and the server closes sockets at token expiry.
+ *                The page handles those two itself (rejoin, below) and shows
+ *                'connecting' while it does, so 'offline' is left for a
+ *                refusal it cannot fix.
  */
 type FeedState = 'live' | 'connecting' | 'offline';
 
@@ -170,12 +171,19 @@ export default function Dashboard() {
       // Only differs when the dashboard is served behind a proxy that moves
       // socket.io off its default path (the preview test copy does).
       path: import.meta.env.VITE_SOCKET_PATH || '/socket.io',
-      auth: { token: localStorage.getItem('accessToken') },
+      // A function, not a value: it is read on every (re)connect, so the socket
+      // presents the token the API client last renewed. A fixed value kept
+      // sending the token from page load, which the server refuses once it is
+      // an hour old - so the feed could never come back without a reload.
+      auth: (cb) => cb({ token: localStorage.getItem('accessToken') }),
     });
 
     // The first connect rides along with the fetch above; only a reconnect has
     // a gap to close.
     let everConnected = false;
+    // Set when rejoin() has just refetched, so the connect it triggers does not
+    // fetch the same data a second time.
+    let freshlyFetched = false;
 
     socket.on('connect', () => {
       if (cancelled) return;
@@ -183,9 +191,27 @@ export default function Dashboard() {
       // Events that fired while the socket was down were queued nowhere.
       // Without this the board would claim to be live while missing every trip
       // that started during the gap.
-      if (everConnected) fetchData();
+      if (everConnected && !freshlyFetched) fetchData();
       everConnected = true;
+      freshlyFetched = false;
     });
+
+    // The server closes the socket when the access token expires, and refuses
+    // a handshake with an expired one. Socket.io retries neither by itself.
+    // fetchData goes through the API client, which renews the token on its
+    // 401, and fills in anything missed; then the socket rejoins with the new
+    // token. Timers are cleared on unmount so leaving the page never reopens it.
+    const retries: ReturnType<typeof setTimeout>[] = [];
+    const rejoin = async () => {
+      if (cancelled) return;
+      setFeed('connecting');
+      try {
+        await fetchData();
+        freshlyFetched = true;
+      } finally {
+        if (!cancelled) socket.connect();
+      }
+    };
 
     socket.on('trip:started', (trip: ActiveTrip) => {
       // A reconnect refetches, so the same trip can arrive twice - once in the
@@ -212,11 +238,23 @@ export default function Dashboard() {
     const stopped = () => {
       if (!cancelled) setFeed(socket.active ? 'connecting' : 'offline');
     };
-    socket.on('disconnect', stopped);
-    socket.on('connect_error', stopped);
+    socket.on('disconnect', (reason) => {
+      stopped();
+      if (reason === 'io server disconnect') retries.push(setTimeout(rejoin, 1000));
+    });
+    socket.on('connect_error', (err) => {
+      stopped();
+      // Only an auth refusal: a network failure is already being retried by
+      // socket.io (socket.active), and rejoining on top would double it.
+      if (/token|Authentication|User not found/i.test(err.message)) {
+        retries.push(setTimeout(rejoin, 3000));
+      }
+    });
 
     return () => {
       cancelled = true;
+      retries.forEach(clearTimeout);
+      socket.removeAllListeners();
       socket.disconnect();
     };
   }, [fetchData, applyTripOp]);
