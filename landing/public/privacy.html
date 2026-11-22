@@ -60,13 +60,13 @@
     <img src="/logo.svg" alt="STS" />
     <h1>Privacy Policy</h1>
   </header>
-  <p class="updated">STS Driver App · Last updated: 18 September 2026</p>
+  <p class="updated">STS Driver App · Last updated: 22 November 2026</p>
 
 
   <h2>Who this covers</h2>
   <p>
     This policy describes how StarTech Solutions LLC ("we") handles information collected through
-    the STS Driver App, an Android application used by our fleet drivers to record trips.
+    the STS Driver App, an iPhone and Android application used by our fleet drivers to record trips.
     The app is issued to employees and contract drivers; it is not available for public sign-up.
   </p>
 
@@ -80,8 +80,13 @@
     </tr>
     <tr>
       <td>GPS coordinates and the derived street address</td>
-      <td>Once when you start a trip, once when you end it</td>
-      <td>To record where each trip began and ended</td>
+      <td>When you start a trip, when you mark a stop as arrived, and when you end a trip</td>
+      <td>To record where each trip began and ended, and confirm arrival at each stop</td>
+    </tr>
+    <tr>
+      <td>Your current position</td>
+      <td>About every 30 seconds while a trip is in progress and the app is open</td>
+      <td>So dispatch can see where the vehicle is on their map. Only your latest position is kept; each update replaces the previous one</td>
     </tr>
     <tr>
       <td>Photographs: a driver selfie, odometer readings, the vehicle licence plate, and optionally a passenger</td>
@@ -97,10 +102,17 @@
 
   <h2>Location: what we do and do not do</h2>
   <p>
-    The app reads your location <strong>only at the two moments you start and end a trip</strong>.
-    It does not track you continuously, does not run in the background, and does not hold the
-    Android background-location permission. If you deny the location permission, a trip cannot
-    be recorded.
+    The app uses your location <strong>only while you are on a trip</strong>. It records your position
+    when you start a trip, when you mark a stop as arrived, and when you end the trip. While a trip
+    is in progress and the app is open on your screen, it also shares your current position with
+    dispatch about every 30 seconds. Only the most recent position is kept, and our server
+    refuses location updates when you are not on a trip.
+  </p>
+  <p>
+    The app does not track you off duty and does not run in the background. It asks only for
+    location access while the app is in use ("While Using the App" on iPhone), never for
+    "Always" or background location access. If you deny location access, a trip cannot be
+    recorded.
   </p>
 
   <h2>Photographs of passengers</h2>
