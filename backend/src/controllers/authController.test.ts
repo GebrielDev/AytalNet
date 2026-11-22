@@ -64,6 +64,16 @@ vi.mock('../middleware/auth', () => ({
     return null;
   },
   authenticateToken: (_req: unknown, _res: unknown, next: () => void) => next(),
+  // Same rule as the real one: a token issued before a password reset is stale.
+  tokenIsCurrent: (decoded: { ver?: number }, account: { tokenVersion?: number | null }) =>
+    (decoded.ver ?? 0) === (account.tokenVersion ?? 0),
+}));
+
+// The auth routes sit behind a Postgres-backed rate limiter. Importing it loads
+// config/database, which throws without DATABASE_URL, and CI has no database.
+// These tests cover the controller, so the limiter just passes requests on.
+vi.mock('../middleware/rateLimit', () => ({
+  authRateLimit: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 const buildApp = async () => {
